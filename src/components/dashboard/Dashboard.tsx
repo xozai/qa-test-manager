@@ -1,0 +1,251 @@
+import { FlaskConical, FolderOpen, AlertTriangle, Clock, TrendingUp, Activity } from 'lucide-react'
+import type { TestCase, TestSuite, User } from '../../types'
+import Badge from '../common/Badge'
+import type { Priority, TestStatus } from '../../types'
+
+interface DashboardProps {
+  testCases: TestCase[]
+  testSuites: TestSuite[]
+  users: User[]
+}
+
+interface StatCardProps {
+  label: string
+  value: string | number
+  sub?: string
+  icon: React.ComponentType<{ className?: string }>
+  iconBg: string
+  iconColor: string
+}
+
+function StatCard({ label, value, sub, icon: Icon, iconBg, iconColor }: StatCardProps) {
+  return (
+    <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex items-start gap-4">
+      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${iconBg}`}>
+        <Icon className={`w-5 h-5 ${iconColor}`} />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">{label}</p>
+        <p className="text-2xl font-bold text-zinc-100 mt-0.5">{value}</p>
+        {sub && <p className="text-xs text-zinc-500 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  )
+}
+
+export default function Dashboard({ testCases, testSuites, users }: DashboardProps) {
+  const total = testCases.length
+  const visibleSuites = testSuites.filter(s => !s.isHidden)
+
+  // QA pass rate
+  const ran = testCases.filter(tc => tc.qaStatus !== 'Not Run')
+  const passed = testCases.filter(tc => tc.qaStatus === 'Pass')
+  const passRate = ran.length > 0 ? Math.round((passed.length / ran.length) * 100) : 0
+
+  // Priority distribution
+  const priorityCounts: Record<Priority, number> = { High: 0, Med: 0, Low: 0 }
+  testCases.forEach(tc => { priorityCounts[tc.priority]++ })
+
+  // Status breakdown (QA)
+  const qaStatusCounts: Record<TestStatus, number> = {
+    Pass: 0, Fail: 0, Blocked: 0, Skipped: 0, 'Not Run': 0, Untested: 0,
+  }
+  testCases.forEach(tc => { qaStatusCounts[tc.qaStatus]++ })
+
+  // Recent test cases (last 5 by updatedAt)
+  const recent = [...testCases]
+    .filter((tc) => tc.updatedAt)
+    .sort((a, b) => new Date(b.updatedAt!).getTime() - new Date(a.updatedAt!).getTime())
+    .slice(0, 5)
+
+  const suiteMap = Object.fromEntries(testSuites.map(s => [s.id, s.name]))
+
+  return (
+    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+      <div>
+        <h1 className="text-xl font-semibold text-zinc-100">Dashboard</h1>
+        <p className="text-sm text-zinc-500 mt-0.5">Overview of your test management workspace</p>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Test Cases"
+          value={total}
+          sub={`${ran.length} executed`}
+          icon={FlaskConical}
+          iconBg="bg-indigo-500/15"
+          iconColor="text-indigo-400"
+        />
+        <StatCard
+          label="Test Suites"
+          value={visibleSuites.length}
+          sub={`${testSuites.filter(s => s.isHidden).length} hidden`}
+          icon={FolderOpen}
+          iconBg="bg-purple-500/15"
+          iconColor="text-purple-400"
+        />
+        <StatCard
+          label="QA Pass Rate"
+          value={`${passRate}%`}
+          sub={`${passed.length} of ${ran.length} passed`}
+          icon={TrendingUp}
+          iconBg="bg-emerald-500/15"
+          iconColor="text-emerald-400"
+        />
+        <StatCard
+          label="Team Members"
+          value={users.length}
+          sub="active users"
+          icon={Activity}
+          iconBg="bg-cyan-500/15"
+          iconColor="text-cyan-400"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* QA Status Breakdown */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+            <Activity className="w-4 h-4 text-zinc-400" />
+            QA Status Breakdown
+          </h2>
+          <div className="space-y-3">
+            {(Object.entries(qaStatusCounts) as [TestStatus, number][]).map(([status, count]) => {
+              const pct = total > 0 ? Math.round((count / total) * 100) : 0
+              return (
+                <div key={status} className="flex items-center gap-3">
+                  <div className="w-28 flex-shrink-0">
+                    <Badge variant="status" value={status}>{status}</Badge>
+                  </div>
+                  <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        status === 'Pass' ? 'bg-emerald-500' :
+                        status === 'Fail' ? 'bg-red-500' :
+                        status === 'Blocked' ? 'bg-orange-500' :
+                        'bg-zinc-600'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-zinc-400 w-8 text-right">{count}</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Priority Distribution */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-zinc-400" />
+            Priority Distribution
+          </h2>
+          <div className="space-y-4">
+            {(['High', 'Med', 'Low'] as Priority[]).map(p => {
+              const count = priorityCounts[p]
+              const pct = total > 0 ? Math.round((count / total) * 100) : 0
+              return (
+                <div key={p}>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <Badge variant="priority" value={p}>{p}</Badge>
+                    <span className="text-xs text-zinc-400">{count} ({pct}%)</span>
+                  </div>
+                  <div className="h-2 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full ${
+                        p === 'High' ? 'bg-red-500' : p === 'Med' ? 'bg-yellow-500' : 'bg-emerald-500'
+                      }`}
+                      style={{ width: `${pct}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-zinc-200 mb-4 flex items-center gap-2">
+            <Clock className="w-4 h-4 text-zinc-400" />
+            Recently Updated
+          </h2>
+          {recent.length === 0 ? (
+            <p className="text-xs text-zinc-500 text-center py-6">No test cases yet</p>
+          ) : (
+            <div className="space-y-3">
+              {recent.map(tc => (
+                <div key={tc.id} className="flex items-start gap-3 p-2.5 rounded-lg bg-zinc-800/50 hover:bg-zinc-800 transition-colors">
+                  <div className="flex-shrink-0 mt-0.5">
+                    <Badge variant="status" value={tc.qaStatus}>{tc.qaStatus}</Badge>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-zinc-200 truncate">{tc.testCaseId}: {tc.title}</p>
+                    <p className="text-xs text-zinc-500 mt-0.5 truncate">{suiteMap[tc.testSuiteId] ?? '—'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Suite Summary Table */}
+      {visibleSuites.length > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-zinc-800">
+            <h2 className="text-sm font-semibold text-zinc-200 flex items-center gap-2">
+              <FolderOpen className="w-4 h-4 text-zinc-400" />
+              Suite Overview
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800">
+                  <th className="text-left px-5 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Suite</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Cases</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Pass</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Fail</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Not Run</th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Pass Rate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleSuites.map(suite => {
+                  const cases = testCases.filter(tc => tc.testSuiteId === suite.id)
+                  const sPass = cases.filter(tc => tc.qaStatus === 'Pass').length
+                  const sFail = cases.filter(tc => tc.qaStatus === 'Fail').length
+                  const sNotRun = cases.filter(tc => tc.qaStatus === 'Not Run').length
+                  const sRan = cases.filter(tc => tc.qaStatus !== 'Not Run').length
+                  const sRate = sRan > 0 ? Math.round((sPass / sRan) * 100) : 0
+                  const owner = users.find(u => u.id === suite.ownerId)
+
+                  return (
+                    <tr key={suite.id} className="border-b border-zinc-800/60 hover:bg-zinc-800/30 transition-colors">
+                      <td className="px-5 py-3">
+                        <p className="font-medium text-zinc-200">{suite.name}</p>
+                        {owner && <p className="text-xs text-zinc-500">{owner.name}</p>}
+                      </td>
+                      <td className="px-4 py-3 text-center text-zinc-300">{cases.length}</td>
+                      <td className="px-4 py-3 text-center text-emerald-400 font-medium">{sPass}</td>
+                      <td className="px-4 py-3 text-center text-red-400 font-medium">{sFail}</td>
+                      <td className="px-4 py-3 text-center text-zinc-500">{sNotRun}</td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={`text-xs font-semibold ${sRate >= 80 ? 'text-emerald-400' : sRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                          {sRan > 0 ? `${sRate}%` : '—'}
+                        </span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

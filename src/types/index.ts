@@ -14,6 +14,13 @@ export interface User {
   roles: UserRole[]
 }
 
+export interface AttributeDef {
+  id: string
+  name: string
+  type: 'text' | 'select' | 'boolean'
+  options?: string[]
+}
+
 export interface TestSuite {
   id: string
   name: string
@@ -21,6 +28,7 @@ export interface TestSuite {
   ownerId: string
   jiraNumber: string
   isHidden: boolean
+  attributes: AttributeDef[]
   createdAt?: string
 }
 
@@ -43,6 +51,7 @@ export interface TestCase {
   batStatus: TestStatus
   priority: Priority
   testSuiteId: string
+  attributeValues: Record<string, string | boolean>
   createdAt?: string
   updatedAt?: string
 }

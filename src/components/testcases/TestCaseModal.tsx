@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import Modal from '../common/Modal'
-import type { TestCase, TestStep, TestSuite, Priority, TestStatus } from '../../types'
+import type { TestCase, TestStep, TestSuite, Priority, TestStatus, AttributeDef } from '../../types'
 
 interface TestCaseModalProps {
   isOpen: boolean
@@ -53,6 +53,7 @@ export default function TestCaseModal({
   const [uatStatus, setUatStatus] = useState<TestStatus>('Not Run')
   const [batStatus, setBatStatus] = useState<TestStatus>('Not Run')
   const [steps, setSteps] = useState<TestStep[]>([{ ...EMPTY_STEP }])
+  const [attributeValues, setAttributeValues] = useState<Record<string, string | boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -69,6 +70,7 @@ export default function TestCaseModal({
       setUatStatus(testCase.uatStatus)
       setBatStatus(testCase.batStatus)
       setSteps(testCase.steps.length > 0 ? testCase.steps : [{ ...EMPTY_STEP }])
+      setAttributeValues(testCase.attributeValues ?? {})
     } else {
       const othersIds = existingIds
       setTestCaseId(suggestCaseId(othersIds))
@@ -82,6 +84,7 @@ export default function TestCaseModal({
       setUatStatus('Not Run')
       setBatStatus('Not Run')
       setSteps([{ ...EMPTY_STEP }])
+      setAttributeValues({})
     }
     setErrors({})
   }, [isOpen, testCase])
@@ -116,6 +119,7 @@ export default function TestCaseModal({
       uatStatus,
       batStatus,
       steps: steps.filter(s => s.action.trim() || s.expectedResult.trim()),
+      attributeValues,
       createdAt: testCase?.createdAt ?? now,
       updatedAt: now,
     }
@@ -147,6 +151,12 @@ export default function TestCaseModal({
   }
 
   const visibleSuites = testSuites.filter(s => !s.isHidden)
+  const selectedSuite = testSuites.find(s => s.id === testSuiteId)
+  const suiteAttrs: AttributeDef[] = selectedSuite?.attributes ?? []
+
+  function setAttrValue(id: string, value: string | boolean) {
+    setAttributeValues(prev => ({ ...prev, [id]: value }))
+  }
 
   const fieldCls = (err?: string) =>
     `w-full bg-zinc-800 border ${err ? 'border-red-500' : 'border-zinc-700'} rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 ${err ? 'focus:ring-red-500' : 'focus:ring-indigo-500'} focus:border-transparent transition-colors`
@@ -296,6 +306,58 @@ export default function TestCaseModal({
             />
           </div>
         </div>
+
+        {/* Custom Attributes */}
+        {suiteAttrs.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-zinc-400 mb-3">Custom Attributes</p>
+            <div className="grid grid-cols-2 gap-3">
+              {suiteAttrs.map(attr => {
+                const val = attributeValues[attr.id]
+                return (
+                  <div key={attr.id}>
+                    <label className={labelCls}>{attr.name || <span className="italic text-zinc-600">Unnamed</span>}</label>
+                    {attr.type === 'text' && (
+                      <input
+                        value={(val as string) ?? ''}
+                        onChange={e => setAttrValue(attr.id, e.target.value)}
+                        className={fieldCls()}
+                        placeholder={`Enter ${attr.name || 'value'}`}
+                      />
+                    )}
+                    {attr.type === 'select' && (
+                      <select
+                        value={(val as string) ?? ''}
+                        onChange={e => setAttrValue(attr.id, e.target.value)}
+                        className={fieldCls()}
+                      >
+                        <option value="">— Select —</option>
+                        {(attr.options ?? []).map(opt => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    )}
+                    {attr.type === 'boolean' && (
+                      <label className="flex items-center gap-3 mt-1.5 cursor-pointer select-none">
+                        <div className="relative">
+                          <input
+                            type="checkbox"
+                            checked={!!val}
+                            onChange={e => setAttrValue(attr.id, e.target.checked)}
+                            className="sr-only"
+                          />
+                          <div className={`w-9 h-5 rounded-full transition-colors ${val ? 'bg-indigo-600' : 'bg-zinc-700'}`} />
+                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? 'translate-x-4' : 'translate-x-0'}`} />
+                        </div>
+                        <span className="text-sm text-zinc-400">{val ? 'Yes' : 'No'}</span>
+                      </label>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Steps */}
         <div>

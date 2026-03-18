@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronsUpDown, X, Upload, Download } from 'lucide-react'
+import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download } from 'lucide-react'
 import type { TestCase, TestSuite, User, SortConfig, Priority, TestStatus } from '../../types'
 import Badge from '../common/Badge'
 import ConfirmDialog from '../common/ConfirmDialog'
@@ -38,6 +38,9 @@ const COLUMNS: ColumnDef[] = [
 
 const PRIORITY_OPTIONS: Priority[] = ['High', 'Med', 'Low']
 const STATUS_OPTIONS: TestStatus[] = ['Pass', 'Fail', 'Blocked', 'Skipped', 'Not Run']
+
+const PRIORITY_RANK: Record<string, number> = { High: 3, Med: 2, Low: 1 }
+const STATUS_RANK: Record<string, number> = { Fail: 5, Blocked: 4, Skipped: 3, 'Not Run': 2, Pass: 1, Untested: 0 }
 
 function SortIcon({ col, sorts }: { col: ColumnKey; sorts: SortConfig[] }) {
   const cfg = sorts.find(s => s.key === col)
@@ -79,6 +82,7 @@ export default function TestCaseGrid({
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS)
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const suiteMap = useMemo(
     () => Object.fromEntries(testSuites.map(s => [s.id, s.name])),
@@ -130,9 +134,16 @@ export default function TestCaseGrid({
 
     return [...result].sort((a, b) => {
       for (const s of sorts) {
-        const av = a[s.key] as string
-        const bv = b[s.key] as string
-        const cmp = av < bv ? -1 : av > bv ? 1 : 0
+        let cmp = 0
+        if (s.key === 'priority') {
+          cmp = (PRIORITY_RANK[a.priority] ?? 0) - (PRIORITY_RANK[b.priority] ?? 0)
+        } else if (s.key === 'qaStatus' || s.key === 'uatStatus' || s.key === 'batStatus') {
+          cmp = (STATUS_RANK[a[s.key]] ?? 0) - (STATUS_RANK[b[s.key]] ?? 0)
+        } else {
+          const av = (a[s.key] ?? '') as string
+          const bv = (b[s.key] ?? '') as string
+          cmp = av < bv ? -1 : av > bv ? 1 : 0
+        }
         if (cmp !== 0) return s.direction === 'asc' ? cmp : -cmp
       }
       return 0
@@ -291,6 +302,7 @@ export default function TestCaseGrid({
         <table className="w-full text-sm min-w-[900px]">
           <thead className="sticky top-0 z-10 bg-zinc-950 border-b border-zinc-800">
             <tr>
+              <th className="w-8 px-2 py-3" />
               {COLUMNS.map(col => (
                 <th
                   key={col.key}
@@ -311,74 +323,121 @@ export default function TestCaseGrid({
           <tbody className="divide-y divide-zinc-800/60">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length + 1} className="px-4 py-16 text-center text-sm text-zinc-500">
+                <td colSpan={COLUMNS.length + 2} className="px-4 py-16 text-center text-sm text-zinc-500">
                   {testCases.length === 0 ? 'No test cases yet. Create your first one.' : 'No results match your filters.'}
                 </td>
               </tr>
             ) : (
-              filtered.map(tc => (
-                <tr
-                  key={tc.id}
-                  className="hover:bg-zinc-800/30 transition-colors group"
-                >
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-xs text-indigo-400">{tc.testCaseId}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-zinc-200 truncate max-w-xs">{tc.title}</p>
-                    {tc.description && (
-                      <p className="text-xs text-zinc-500 truncate max-w-xs mt-0.5">{tc.description}</p>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs text-zinc-400 truncate block max-w-[130px]">
-                      {suiteMap[tc.testSuiteId] ?? <span className="text-zinc-600">—</span>}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="priority" value={tc.priority}>{tc.priority}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="status" value={tc.qaStatus}>{tc.qaStatus}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="status" value={tc.uatStatus}>{tc.uatStatus}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="status" value={tc.batStatus}>{tc.batStatus}</Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-xs text-zinc-500">
-                      {tc.updatedAt ? new Date(tc.updatedAt).toLocaleDateString() : '—'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => onDuplicate(tc)}
-                        title="Duplicate"
-                        className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => onEdit(tc)}
-                        title="Edit"
-                        className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteId(tc.id)}
-                        title="Delete"
-                        className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+              filtered.flatMap(tc => {
+                const suite = testSuites.find(s => s.id === tc.testSuiteId)
+                const attrs = suite?.attributes ?? []
+                const isExpanded = expandedId === tc.id
+                const hasAttrs = attrs.length > 0
+
+                return [
+                  <tr
+                    key={tc.id}
+                    className="hover:bg-zinc-800/30 transition-colors group"
+                  >
+                    {/* Expand toggle */}
+                    <td className="px-2 py-3 w-8">
+                      {hasAttrs && (
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : tc.id)}
+                          className="p-1 rounded text-zinc-600 hover:text-zinc-300 hover:bg-zinc-700 transition-colors"
+                          title={isExpanded ? 'Collapse' : 'Show custom attributes'}
+                        >
+                          {isExpanded
+                            ? <ChevronDown className="w-3.5 h-3.5" />
+                            : <ChevronRight className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-xs text-indigo-400">{tc.testCaseId}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="font-medium text-zinc-200 truncate max-w-xs">{tc.title}</p>
+                      {tc.description && (
+                        <p className="text-xs text-zinc-500 truncate max-w-xs mt-0.5">{tc.description}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs text-zinc-400 truncate block max-w-[130px]">
+                        {suiteMap[tc.testSuiteId] ?? <span className="text-zinc-600">—</span>}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="priority" value={tc.priority}>{tc.priority}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="status" value={tc.qaStatus}>{tc.qaStatus}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="status" value={tc.uatStatus}>{tc.uatStatus}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant="status" value={tc.batStatus}>{tc.batStatus}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-xs text-zinc-500">
+                        {tc.updatedAt ? new Date(tc.updatedAt).toLocaleDateString() : '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => onDuplicate(tc)}
+                          title="Duplicate"
+                          className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+                        >
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onEdit(tc)}
+                          title="Edit"
+                          className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-200 hover:bg-zinc-700 transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => setDeleteId(tc.id)}
+                          title="Delete"
+                          className="p-1.5 rounded-md text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>,
+
+                  // Expandable attribute detail row
+                  ...(isExpanded && hasAttrs ? [
+                    <tr key={`${tc.id}-attrs`} className="bg-zinc-900/60 border-b border-zinc-800/40">
+                      <td colSpan={COLUMNS.length + 2} className="px-6 py-4">
+                        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">
+                          Custom Attributes — {suite?.name}
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                          {attrs.map(attr => {
+                            const val = tc.attributeValues?.[attr.id]
+                            return (
+                              <div key={attr.id}>
+                                <p className="text-xs text-zinc-500 mb-0.5">{attr.name}</p>
+                                <p className="text-sm text-zinc-200">
+                                  {attr.type === 'boolean'
+                                    ? (val ? 'Yes' : 'No')
+                                    : ((val as string) || <span className="text-zinc-600">—</span>)}
+                                </p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  ] : []),
+                ]
+              })
             )}
           </tbody>
         </table>

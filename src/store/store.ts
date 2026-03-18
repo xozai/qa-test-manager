@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type {
   User, TestSuite, TestCase, TestStep, TestRun,
-  UserRole, TestStatus, Priority, TesterRole,
+  UserRole, TestStatus, Priority, TesterRole, AttributeDef,
 } from '../types'
 
 // ── DB row types (Supabase returns snake_case) ────────────────────────────────
@@ -21,6 +21,7 @@ interface DbTestSuite {
   owner_id: string | null
   jira_number: string
   is_hidden: boolean
+  attributes: AttributeDef[]
   created_at: string
 }
 
@@ -37,6 +38,7 @@ interface DbTestCase {
   bat_status: string
   priority: string
   test_suite_id: string | null
+  attribute_values: Record<string, string | boolean>
   created_at: string
   updated_at: string
 }
@@ -72,6 +74,7 @@ function toTestSuite(row: DbTestSuite): TestSuite {
     ownerId: row.owner_id ?? '',
     jiraNumber: row.jira_number,
     isHidden: row.is_hidden,
+    attributes: row.attributes ?? [],
     createdAt: row.created_at,
   }
 }
@@ -90,6 +93,7 @@ function toTestCase(row: DbTestCase): TestCase {
     batStatus: row.bat_status as TestStatus,
     priority: row.priority as Priority,
     testSuiteId: row.test_suite_id ?? '',
+    attributeValues: row.attribute_values ?? {},
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -124,6 +128,7 @@ function fromTestCase(tc: Omit<TestCase, 'id'>): Omit<DbTestCase, 'id' | 'create
     bat_status: tc.batStatus,
     priority: tc.priority,
     test_suite_id: tc.testSuiteId || null,
+    attribute_values: tc.attributeValues ?? {},
   }
 }
 
@@ -220,6 +225,7 @@ export function useTestStore() {
       owner_id: suite.ownerId || null,
       jira_number: suite.jiraNumber,
       is_hidden: suite.isHidden,
+      attributes: suite.attributes ?? [],
     })
   }, [])
 
@@ -230,6 +236,7 @@ export function useTestStore() {
     if (data.ownerId     !== undefined) patch.owner_id    = data.ownerId || null
     if (data.jiraNumber  !== undefined) patch.jira_number = data.jiraNumber
     if (data.isHidden    !== undefined) patch.is_hidden   = data.isHidden
+    if (data.attributes  !== undefined) patch.attributes  = data.attributes
     await supabase.from('test_suites').update(patch).eq('id', id)
   }, [])
 
@@ -255,7 +262,8 @@ export function useTestStore() {
     if (data.uatStatus     !== undefined) patch.uat_status    = data.uatStatus
     if (data.batStatus     !== undefined) patch.bat_status    = data.batStatus
     if (data.priority      !== undefined) patch.priority      = data.priority
-    if (data.testSuiteId   !== undefined) patch.test_suite_id = data.testSuiteId || null
+    if (data.testSuiteId     !== undefined) patch.test_suite_id  = data.testSuiteId || null
+    if (data.attributeValues !== undefined) patch.attribute_values = data.attributeValues
     await supabase.from('test_cases').update(patch).eq('id', id)
   }, [])
 

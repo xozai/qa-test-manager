@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
 import Modal from '../common/Modal'
-import type { TestSuite, User } from '../../types'
+import type { TestSuite, User, AttributeDef } from '../../types'
 
 interface TestSuiteModalProps {
   isOpen: boolean
@@ -28,6 +29,7 @@ export default function TestSuiteModal({
   const [ownerId, setOwnerId] = useState('')
   const [jiraNumber, setJiraNumber] = useState('')
   const [isHidden, setIsHidden] = useState(false)
+  const [attributes, setAttributes] = useState<AttributeDef[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -38,12 +40,14 @@ export default function TestSuiteModal({
       setOwnerId(testSuite.ownerId)
       setJiraNumber(testSuite.jiraNumber)
       setIsHidden(testSuite.isHidden)
+      setAttributes(testSuite.attributes ?? [])
     } else {
       setName('')
       setDescription('')
       setOwnerId(users[0]?.id ?? '')
       setJiraNumber('')
       setIsHidden(false)
+      setAttributes([])
     }
     setErrors({})
   }, [isOpen, testSuite])
@@ -64,10 +68,24 @@ export default function TestSuiteModal({
       ownerId,
       jiraNumber: jiraNumber.trim(),
       isHidden,
+      attributes,
       createdAt: testSuite?.createdAt ?? new Date().toISOString(),
     }
     onSave(saved)
     onClose()
+  }
+
+  // Attribute management
+  function addAttr() {
+    setAttributes(prev => [...prev, { id: genId(), name: '', type: 'text' }])
+  }
+
+  function removeAttr(i: number) {
+    setAttributes(prev => prev.filter((_, idx) => idx !== i))
+  }
+
+  function updateAttr(i: number, patch: Partial<AttributeDef>) {
+    setAttributes(prev => prev.map((a, idx) => idx === i ? { ...a, ...patch } : a))
   }
 
   const fieldCls = (err?: string) =>
@@ -80,7 +98,7 @@ export default function TestSuiteModal({
       isOpen={isOpen}
       onClose={onClose}
       title={isEdit ? 'Edit Test Suite' : 'New Test Suite'}
-      size="md"
+      size="lg"
       footer={
         <>
           <button
@@ -161,6 +179,78 @@ export default function TestSuiteModal({
           </div>
           <span className="text-sm text-zinc-300">Hide suite from test case views</span>
         </label>
+
+        {/* Custom Attribute Definitions */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <p className="text-xs font-medium text-zinc-400">Custom Attributes</p>
+              <p className="text-xs text-zinc-600 mt-0.5">Applied to all test cases in this suite</p>
+            </div>
+            <button
+              type="button"
+              onClick={addAttr}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Attribute
+            </button>
+          </div>
+
+          {attributes.length === 0 ? (
+            <p className="text-xs text-zinc-600 py-3 text-center border border-dashed border-zinc-700 rounded-lg">
+              No custom attributes yet
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {attributes.map((attr, i) => (
+                <div
+                  key={attr.id}
+                  className="flex gap-2 items-start p-3 bg-zinc-800/60 border border-zinc-700/60 rounded-lg"
+                >
+                  {/* Name */}
+                  <input
+                    value={attr.name}
+                    onChange={e => updateAttr(i, { name: e.target.value })}
+                    placeholder="Attribute name"
+                    className="flex-1 bg-zinc-700 border border-zinc-600 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
+                  />
+
+                  {/* Type */}
+                  <select
+                    value={attr.type}
+                    onChange={e => updateAttr(i, { type: e.target.value as AttributeDef['type'], options: undefined })}
+                    className="bg-zinc-700 border border-zinc-600 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
+                  >
+                    <option value="text">Text</option>
+                    <option value="select">Select</option>
+                    <option value="boolean">Boolean</option>
+                  </select>
+
+                  {/* Options (only for select type) */}
+                  {attr.type === 'select' && (
+                    <input
+                      value={attr.options?.join(', ') ?? ''}
+                      onChange={e => updateAttr(i, {
+                        options: e.target.value.split(',').map(o => o.trim()).filter(Boolean),
+                      })}
+                      placeholder="opt1, opt2, opt3"
+                      className="flex-1 bg-zinc-700 border border-zinc-600 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
+                    />
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => removeAttr(i)}
+                    className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors flex-shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </Modal>
   )

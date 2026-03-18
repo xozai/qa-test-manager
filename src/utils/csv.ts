@@ -144,6 +144,7 @@ export function importTestCasesFromCSV(file: File): Promise<ImportResult> {
             batStatus: batStatus as TestStatus,
             priority: priority as Priority,
             testSuiteId: row.testSuiteId?.trim() || '',
+            attributeValues: {},
           })
         })
 

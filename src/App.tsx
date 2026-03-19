@@ -150,8 +150,7 @@ export default function App() {
               testCases={store.testCases}
               testSuites={store.testSuites}
               users={store.users}
-              testRuns={store.testRuns}
-              onSaveRun={(run) => void store.saveRun(run)}
+              onUpdateTestCase={(id, changes) => void store.updateTestCase(id, changes)}
             />
           )}
 

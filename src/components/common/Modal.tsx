@@ -40,13 +40,16 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onMouseDown={(e) => { if (e.target === overlayRef.current) onClose() }}
     >
-      <div className={cn('relative w-full bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl flex flex-col max-h-[90vh]', SIZE_CLASSES[size])}>
+      <div className={cn(
+        'relative w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-2xl flex flex-col max-h-[90vh]',
+        SIZE_CLASSES[size]
+      )}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 flex-shrink-0">
-          <h2 className="text-base font-semibold text-zinc-100">{title}</h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">{title}</h2>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -59,7 +62,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md', f
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800 flex-shrink-0">
+          <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 flex-shrink-0">
             {footer}
           </div>
         )}

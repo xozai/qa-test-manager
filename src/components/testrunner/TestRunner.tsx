@@ -23,8 +23,8 @@ const STATUS_COLOR: Record<TestStatus, string> = {
   Fail: 'text-red-400 bg-red-500/10 border-red-500/30',
   Blocked: 'text-orange-400 bg-orange-500/10 border-orange-500/30',
   Skipped: 'text-zinc-400 bg-zinc-500/10 border-zinc-500/30',
-  'Not Run': 'text-zinc-500 bg-zinc-800 border-zinc-700',
-  Untested: 'text-zinc-500 bg-zinc-800 border-zinc-700',
+  'Not Run': 'text-zinc-500 bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700',
+  Untested: 'text-zinc-500 bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700',
 }
 
 function exportRunCsv(run: TestRun, testCases: TestCase[], testSuites: TestSuite[]) {
@@ -139,13 +139,13 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
       <div className="p-6 space-y-6 max-w-4xl mx-auto">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-semibold text-zinc-100">Run Saved</h1>
+            <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Run Saved</h1>
             <p className="text-sm text-zinc-500 mt-0.5">{savedRun.name}</p>
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => exportRunCsv(savedRun, testCases, testSuites)}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
             >
               <Download className="w-4 h-4" />
               Export CSV
@@ -162,23 +162,23 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
 
         <div className="grid grid-cols-4 gap-4">
           {([
-            ['Total', savedRun.results.length, 'text-zinc-300'],
+            ['Total', savedRun.results.length, 'text-zinc-700 dark:text-zinc-300'],
             ['Pass', passed, 'text-emerald-400'],
             ['Fail', failed, 'text-red-400'],
             ['Pass Rate', `${passRate}%`, passRate >= 80 ? 'text-emerald-400' : passRate >= 50 ? 'text-yellow-400' : 'text-red-400'],
           ] as [string, string | number, string][]).map(([label, val, cls]) => (
-            <div key={label} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center">
+            <div key={label} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 text-center">
               <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">{label}</p>
               <p className={`text-2xl font-bold ${cls}`}>{val}</p>
             </div>
           ))}
         </div>
 
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800">
+                <tr className="border-b border-zinc-200 dark:border-zinc-800">
                   <th className="text-left px-5 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">ID</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Title</th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Suite</th>
@@ -190,9 +190,9 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
                 {savedRun.results.map(r => {
                   const tc = testCases.find(c => c.testCaseId === r.testCaseId)
                   return (
-                    <tr key={r.testCaseId} className="border-b border-zinc-800/60">
+                    <tr key={r.testCaseId} className="border-b border-zinc-100 dark:border-zinc-800/60">
                       <td className="px-5 py-3 font-mono text-xs text-indigo-400">{r.testCaseId}</td>
-                      <td className="px-4 py-3 text-zinc-300 text-xs">{tc?.title ?? '—'}</td>
+                      <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300 text-xs">{tc?.title ?? '—'}</td>
                       <td className="px-4 py-3 text-zinc-500 text-xs">{suiteMap[tc?.testSuiteId ?? ''] ?? '—'}</td>
                       <td className="px-4 py-3 text-center">
                         <Badge variant="status" value={r.status}>{r.status}</Badge>
@@ -213,7 +213,7 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
     <div className="p-6 space-y-6 max-w-4xl mx-auto">
       {/* Header + stepper */}
       <div>
-        <h1 className="text-xl font-semibold text-zinc-100">Test Runner</h1>
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">Test Runner</h1>
         <p className="text-sm text-zinc-500 mt-0.5">Execute a test run across one or more suites</p>
       </div>
 
@@ -224,14 +224,14 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
           const done = step > n
           return (
             <div key={label} className="flex items-center gap-2">
-              {idx > 0 && <ChevronRight className="w-4 h-4 text-zinc-600" />}
+              {idx > 0 && <ChevronRight className="w-4 h-4 text-zinc-400 dark:text-zinc-600" />}
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
                 active ? 'bg-indigo-600 text-white' :
-                done ? 'bg-zinc-800 text-zinc-300' :
-                'bg-zinc-900 text-zinc-600'
+                done ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300' :
+                'bg-zinc-50 dark:bg-zinc-900 text-zinc-500 dark:text-zinc-600'
               }`}>
                 <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${
-                  active ? 'bg-white/20' : done ? 'bg-emerald-500 text-white' : 'bg-zinc-700 text-zinc-500'
+                  active ? 'bg-white/20' : done ? 'bg-emerald-500 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500'
                 }`}>
                   {done ? '✓' : n}
                 </span>
@@ -245,7 +245,7 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
       {/* ── Step 1: Select suites ─────────────────────────────────────────── */}
       {step === 1 && (
         <div className="space-y-4">
-          <p className="text-sm text-zinc-400">Select one or more test suites to include in this run.</p>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">Select one or more test suites to include in this run.</p>
 
           {visibleSuites.length === 0 ? (
             <div className="py-16 text-center text-zinc-500 text-sm">No visible test suites available.</div>
@@ -261,12 +261,12 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
                     onClick={() => toggleSuite(suite.id)}
                     className={`w-full text-left flex items-center gap-4 px-4 py-3.5 rounded-xl border transition-colors ${
                       selected
-                        ? 'bg-indigo-500/10 border-indigo-500/40 text-zinc-100'
-                        : 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                        ? 'bg-indigo-500/10 border-indigo-500/40 text-zinc-900 dark:text-zinc-100'
+                        : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:border-zinc-300 dark:hover:border-zinc-700'
                     }`}
                   >
                     <div className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 border ${
-                      selected ? 'bg-indigo-600 border-indigo-600' : 'bg-zinc-800 border-zinc-600'
+                      selected ? 'bg-indigo-600 border-indigo-600' : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-600'
                     }`}>
                       {selected && <span className="text-white text-xs">✓</span>}
                     </div>
@@ -303,34 +303,34 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
       {/* ── Step 2: Configure ─────────────────────────────────────────────── */}
       {step === 2 && (
         <div className="space-y-5">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-zinc-400 mb-1">Run Name</label>
+              <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Run Name</label>
               <input
                 value={runName}
                 onChange={e => setRunName(e.target.value)}
                 placeholder="e.g. Sprint 12 Regression"
-                className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
+                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Executor</label>
+                <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Executor</label>
                 <select
                   value={executorId}
                   onChange={e => setExecutorId(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
+                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
                 >
                   {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">Testing Phase</label>
+                <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1">Testing Phase</label>
                 <select
                   value={testerRole}
                   onChange={e => setTesterRole(e.target.value as TesterRole)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
+                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors"
                 >
                   {TESTER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
                 </select>
@@ -338,21 +338,21 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
             </div>
           </div>
 
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <p className="text-xs font-medium text-zinc-400 mb-3">Selected suites ({selectedSuiteIds.length})</p>
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
+            <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-3">Selected suites ({selectedSuiteIds.length})</p>
             <div className="space-y-2">
               {selectedSuiteIds.map(id => {
                 const suite = testSuites.find(s => s.id === id)
                 const count = testCases.filter(tc => tc.testSuiteId === id).length
                 return (
                   <div key={id} className="flex items-center justify-between text-sm">
-                    <span className="text-zinc-300">{suite?.name}</span>
+                    <span className="text-zinc-700 dark:text-zinc-300">{suite?.name}</span>
                     <span className="text-zinc-500 text-xs">{count} cases</span>
                   </div>
                 )
               })}
             </div>
-            <p className="text-xs text-zinc-500 mt-3 pt-3 border-t border-zinc-800">
+            <p className="text-xs text-zinc-500 mt-3 pt-3 border-t border-zinc-200 dark:border-zinc-800">
               {selectedCases.length} total test cases will be executed
             </p>
           </div>
@@ -360,7 +360,7 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
           <div className="flex justify-between pt-2">
             <button
               onClick={() => setStep(1)}
-              className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+              className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
             >
               Back
             </button>
@@ -380,16 +380,16 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
       {step === 3 && (
         <div className="space-y-4">
           {/* Progress bar */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-zinc-400">{ran} of {results.length} executed</span>
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">{ran} of {results.length} executed</span>
               <div className="flex items-center gap-3 text-xs">
                 <span className="text-emerald-400">{passed} pass</span>
                 <span className="text-red-400">{failed} fail</span>
                 <span className="text-zinc-500">{notRun} not run</span>
               </div>
             </div>
-            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
               <div
                 className="h-full bg-indigo-500 rounded-full transition-all"
                 style={{ width: `${results.length > 0 ? (ran / results.length) * 100 : 0}%` }}
@@ -411,18 +411,18 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
             ))}
             <button
               onClick={() => setAllStatus('Not Run')}
-              className="px-2.5 py-1 text-xs font-medium rounded-md border text-zinc-500 bg-zinc-800 border-zinc-700 hover:text-zinc-300 transition-colors"
+              className="px-2.5 py-1 text-xs font-medium rounded-md border text-zinc-500 bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
             >
               Reset
             </button>
           </div>
 
           {/* Execution table */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-800">
+                  <tr className="border-b border-zinc-200 dark:border-zinc-800">
                     <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide w-24">ID</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Title</th>
                     <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide w-28">Priority</th>
@@ -434,12 +434,12 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
                   {results.map((r) => {
                     const tc = testCases.find(c => c.testCaseId === r.testCaseId)
                     return (
-                      <tr key={r.testCaseId} className="border-b border-zinc-800/60 hover:bg-zinc-800/20">
+                      <tr key={r.testCaseId} className="border-b border-zinc-100 dark:border-zinc-800/60 hover:bg-zinc-50 dark:hover:bg-zinc-800/20">
                         <td className="px-4 py-2.5 font-mono text-xs text-indigo-400">{r.testCaseId}</td>
                         <td className="px-4 py-2.5">
-                          <p className="text-zinc-200 text-xs font-medium">{tc?.title}</p>
+                          <p className="text-zinc-800 dark:text-zinc-200 text-xs font-medium">{tc?.title}</p>
                           {tc?.preconditions && (
-                            <p className="text-zinc-600 text-xs mt-0.5 truncate max-w-xs">{tc.preconditions}</p>
+                            <p className="text-zinc-400 dark:text-zinc-600 text-xs mt-0.5 truncate max-w-xs">{tc.preconditions}</p>
                           )}
                         </td>
                         <td className="px-4 py-2.5">
@@ -459,7 +459,7 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
                             value={r.notes}
                             onChange={e => updateResult(r.testCaseId, 'notes', e.target.value)}
                             placeholder="Optional notes..."
-                            className="w-full bg-transparent border border-transparent hover:border-zinc-700 focus:border-zinc-600 rounded-md px-2 py-1.5 text-xs text-zinc-300 placeholder-zinc-600 focus:outline-none transition-colors"
+                            className="w-full bg-transparent border border-transparent hover:border-zinc-300 dark:hover:border-zinc-700 focus:border-zinc-400 dark:focus:border-zinc-600 rounded-md px-2 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none transition-colors"
                           />
                         </td>
                       </tr>
@@ -473,14 +473,14 @@ export default function TestRunner({ testCases, testSuites, users, testRuns: _te
           <div className="flex justify-between pt-2">
             <button
               onClick={() => setStep(2)}
-              className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+              className="px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
             >
               Back
             </button>
             <div className="flex items-center gap-3">
               <button
                 onClick={handleReset}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-400 hover:text-zinc-200 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
               >
                 <RotateCcw className="w-4 h-4" />
                 Discard

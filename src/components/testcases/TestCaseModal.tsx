@@ -159,9 +159,9 @@ export default function TestCaseModal({
   }
 
   const fieldCls = (err?: string) =>
-    `w-full bg-zinc-800 border ${err ? 'border-red-500' : 'border-zinc-700'} rounded-lg px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 ${err ? 'focus:ring-red-500' : 'focus:ring-indigo-500'} focus:border-transparent transition-colors`
+    `w-full bg-zinc-50 dark:bg-zinc-800 border ${err ? 'border-red-500' : 'border-zinc-300 dark:border-zinc-700'} rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 ${err ? 'focus:ring-red-500' : 'focus:ring-indigo-500'} focus:border-transparent transition-colors`
 
-  const labelCls = 'block text-xs font-medium text-zinc-400 mb-1'
+  const labelCls = 'block text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-1'
 
   return (
     <Modal
@@ -173,7 +173,7 @@ export default function TestCaseModal({
         <>
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
+            className="px-4 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
           >
             Cancel
           </button>
@@ -310,13 +310,13 @@ export default function TestCaseModal({
         {/* Custom Attributes */}
         {suiteAttrs.length > 0 && (
           <div>
-            <p className="text-xs font-medium text-zinc-400 mb-3">Custom Attributes</p>
+            <p className="text-xs font-medium text-zinc-600 dark:text-zinc-400 mb-3">Custom Attributes</p>
             <div className="grid grid-cols-2 gap-3">
               {suiteAttrs.map(attr => {
                 const val = attributeValues[attr.id]
                 return (
                   <div key={attr.id}>
-                    <label className={labelCls}>{attr.name || <span className="italic text-zinc-600">Unnamed</span>}</label>
+                    <label className={labelCls}>{attr.name || <span className="italic text-zinc-400 dark:text-zinc-600">Unnamed</span>}</label>
                     {attr.type === 'text' && (
                       <input
                         value={(val as string) ?? ''}
@@ -346,10 +346,10 @@ export default function TestCaseModal({
                             onChange={e => setAttrValue(attr.id, e.target.checked)}
                             className="sr-only"
                           />
-                          <div className={`w-9 h-5 rounded-full transition-colors ${val ? 'bg-indigo-600' : 'bg-zinc-700'}`} />
+                          <div className={`w-9 h-5 rounded-full transition-colors ${val ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-700'}`} />
                           <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${val ? 'translate-x-4' : 'translate-x-0'}`} />
                         </div>
-                        <span className="text-sm text-zinc-400">{val ? 'Yes' : 'No'}</span>
+                        <span className="text-sm text-zinc-600 dark:text-zinc-400">{val ? 'Yes' : 'No'}</span>
                       </label>
                     )}
                   </div>
@@ -362,13 +362,13 @@ export default function TestCaseModal({
         {/* Steps */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <label className="text-xs font-medium text-zinc-400">
+            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400">
               Test Steps
-              <span className="ml-1.5 text-zinc-600">({steps.length})</span>
+              <span className="ml-1.5 text-zinc-400 dark:text-zinc-600">({steps.length})</span>
             </label>
             <button
               onClick={addStep}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 dark:hover:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Step
@@ -379,22 +379,22 @@ export default function TestCaseModal({
             {steps.map((step, i) => (
               <div
                 key={i}
-                className="flex gap-2 p-3 bg-zinc-800/60 border border-zinc-700/60 rounded-lg group/step"
+                className="flex gap-2 p-3 bg-zinc-100/60 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/60 rounded-lg group/step"
               >
                 {/* Step number + reorder */}
                 <div className="flex flex-col items-center gap-1 flex-shrink-0 pt-1">
-                  <span className="text-xs font-mono text-zinc-600 w-5 text-center">{i + 1}</span>
+                  <span className="text-xs font-mono text-zinc-400 dark:text-zinc-600 w-5 text-center">{i + 1}</span>
                   <button
                     onClick={() => moveStep(i, -1)}
                     disabled={i === 0}
-                    className="p-0.5 text-zinc-600 hover:text-zinc-300 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    className="p-0.5 text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                   >
                     <ChevronUp className="w-3.5 h-3.5" />
                   </button>
                   <button
                     onClick={() => moveStep(i, 1)}
                     disabled={i === steps.length - 1}
-                    className="p-0.5 text-zinc-600 hover:text-zinc-300 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+                    className="p-0.5 text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
                   >
                     <ChevronDown className="w-3.5 h-3.5" />
                   </button>
@@ -409,7 +409,7 @@ export default function TestCaseModal({
                       onChange={e => updateStep(i, 'action', e.target.value)}
                       rows={2}
                       placeholder="What to do..."
-                      className="w-full bg-zinc-700/60 border border-zinc-600/60 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-none transition-colors"
+                      className="w-full bg-white dark:bg-zinc-700/60 border border-zinc-300 dark:border-zinc-600/60 rounded-md px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-none transition-colors"
                     />
                   </div>
                   <div>
@@ -419,7 +419,7 @@ export default function TestCaseModal({
                       onChange={e => updateStep(i, 'expectedResult', e.target.value)}
                       rows={2}
                       placeholder="What should happen..."
-                      className="w-full bg-zinc-700/60 border border-zinc-600/60 rounded-md px-2.5 py-1.5 text-xs text-zinc-100 placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-none transition-colors"
+                      className="w-full bg-white dark:bg-zinc-700/60 border border-zinc-300 dark:border-zinc-600/60 rounded-md px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent resize-none transition-colors"
                     />
                   </div>
                 </div>
@@ -427,7 +427,7 @@ export default function TestCaseModal({
                 {/* Delete step */}
                 <button
                   onClick={() => removeStep(i)}
-                  className="flex-shrink-0 self-start mt-1 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover/step:opacity-100 transition-all"
+                  className="flex-shrink-0 self-start mt-1 p-1 text-zinc-400 dark:text-zinc-600 hover:text-red-400 opacity-0 group-hover/step:opacity-100 transition-all"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import { useTestStore } from './store'
+import { useTheme } from './hooks/useTheme'
 import Sidebar, { type View } from './components/layout/Sidebar'
 import Dashboard from './components/dashboard/Dashboard'
 import TestCaseGrid from './components/testcases/TestCaseGrid'
@@ -20,6 +21,7 @@ export default function App() {
   const [session, setSession] = useState<AuthState>(undefined)
   const store = useTestStore()
   const [currentView, setCurrentView] = useState<View>('dashboard')
+  const { theme, toggleTheme } = useTheme()
 
   // Test Case modal state
   const [tcModalOpen, setTcModalOpen] = useState(false)
@@ -65,7 +67,7 @@ export default function App() {
   // ── Auth loading ──────────────────────────────────────────────────────────
   if (session === undefined) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
@@ -79,7 +81,7 @@ export default function App() {
   // ── Data loading ──────────────────────────────────────────────────────────
   if (store.loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center gap-4">
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col items-center justify-center gap-4">
         <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center">
           <FlaskConical className="w-5 h-5 text-white" />
         </div>
@@ -93,17 +95,19 @@ export default function App() {
 
   // ── Main app ──────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       <Sidebar
         currentView={currentView}
         onNavigate={setCurrentView}
         testCaseCount={store.testCases.length}
         testSuiteCount={store.testSuites.length}
         onSignOut={() => supabase.auth.signOut()}
+        theme={theme}
+        onToggleTheme={toggleTheme}
       />
 
       <main className="pl-64 min-h-screen">
-        <div className="min-h-screen bg-zinc-900/50">
+        <div className="min-h-screen bg-zinc-100/50 dark:bg-zinc-900/50">
 
           {currentView === 'dashboard' && (
             <Dashboard

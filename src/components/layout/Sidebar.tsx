@@ -1,7 +1,7 @@
-import { LayoutDashboard, FlaskConical, FolderOpen, Play, Users, ChevronRight, LogOut, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, FlaskConical, FolderOpen, Play, Users, ChevronRight, LogOut, Sun, Moon, Sparkles } from 'lucide-react'
 import { cn } from '../../utils/cn'
 
-export type View = 'dashboard' | 'testcases' | 'testsuites' | 'testrunner' | 'users'
+export type View = 'dashboard' | 'testcases' | 'testsuites' | 'testrunner' | 'users' | 'ai'
 
 interface NavItem {
   id: View
@@ -21,11 +21,12 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: 'dashboard',  label: 'Dashboard',   icon: LayoutDashboard },
-  { id: 'testcases',  label: 'Test Cases',  icon: FlaskConical },
-  { id: 'testsuites', label: 'Test Suites', icon: FolderOpen },
-  { id: 'testrunner', label: 'Test Runner', icon: Play },
-  { id: 'users',      label: 'Users',       icon: Users },
+  { id: 'dashboard',  label: 'Dashboard',     icon: LayoutDashboard },
+  { id: 'testcases',  label: 'Test Cases',    icon: FlaskConical },
+  { id: 'testsuites', label: 'Test Suites',   icon: FolderOpen },
+  { id: 'testrunner', label: 'Test Runner',   icon: Play },
+  { id: 'users',      label: 'Users',         icon: Users },
+  { id: 'ai',         label: 'AI Assistant',  icon: Sparkles },
 ]
 
 export default function Sidebar({
@@ -57,6 +58,7 @@ export default function Sidebar({
           const Icon = item.icon
           const isActive = currentView === item.id
           const badge = getBadge(item.id)
+          const isAI = item.id === 'ai'
 
           return (
             <button
@@ -64,14 +66,22 @@ export default function Sidebar({
               onClick={() => onNavigate(item.id)}
               className={cn(
                 'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group',
-                isActive
+                isActive && isAI
+                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-900/40'
+                  : isActive
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40'
+                  : isAI
+                  ? 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-700 dark:hover:text-indigo-300'
                   : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100'
               )}
             >
               <Icon className={cn(
                 'w-4 h-4 flex-shrink-0',
-                isActive ? 'text-white' : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-700 dark:group-hover:text-zinc-300'
+                isActive
+                  ? 'text-white'
+                  : isAI
+                  ? 'text-indigo-500 dark:text-indigo-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-300'
+                  : 'text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-700 dark:group-hover:text-zinc-300'
               )} />
               <span className="flex-1 text-left">{item.label}</span>
               {badge !== undefined && badge > 0 && (
@@ -103,6 +113,10 @@ export default function Sidebar({
             <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
           </button>
         )}
+        <div className="px-3 py-1 flex items-center justify-between">
+          <span className="text-xs text-zinc-400 dark:text-zinc-600">v{__APP_VERSION__}</span>
+          <span className="text-xs text-zinc-400 dark:text-zinc-600">Supabase</span>
+        </div>
         {onSignOut && (
           <button
             onClick={onSignOut}
@@ -112,7 +126,6 @@ export default function Sidebar({
             <span>Sign Out</span>
           </button>
         )}
-        <p className="px-3 text-xs text-zinc-400 dark:text-zinc-600">v0.1.0 &mdash; Supabase</p>
       </div>
     </aside>
   )

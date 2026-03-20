@@ -247,6 +247,22 @@ function CaseView({ tc, suite, executor, testerRole, onBack, onExecute }: {
 
 // ── CaseExecution ─────────────────────────────────────────────────────────────
 
+function calcStatus(stepResults: Record<number, 'Pass' | 'Fail'>, totalSteps: number): TestStatus | 'In Progress' | null {
+  if (totalSteps === 0) return null
+  const marked = Object.keys(stepResults).length
+  if (marked === 0) return null
+  const values = Object.values(stepResults)
+  if (values.includes('Fail')) return 'Fail'
+  if (marked < totalSteps) return 'In Progress'
+  return 'Pass'
+}
+
+const CALC_STATUS_STYLE: Record<string, string> = {
+  Pass:        'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+  Fail:        'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30',
+  'In Progress':'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30',
+}
+
 function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
   tc: TestCase
   suite: TestSuite | undefined
@@ -255,8 +271,9 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
   onSave: (status: TestStatus) => void
 }) {
   const [stepResults, setStepResults] = useState<Record<number, 'Pass' | 'Fail'>>({})
-  const [finalStatus, setFinalStatus] = useState<TestStatus | null>(null)
+  const [overrideStatus, setOverrideStatus] = useState<TestStatus | null>(null)
   const suiteAttrs = suite?.attributes ?? []
+  const hasSteps = tc.steps.length > 0
 
   function toggleStep(i: number, result: 'Pass' | 'Fail') {
     setStepResults(prev => {
@@ -267,7 +284,15 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
       }
       return { ...prev, [i]: result }
     })
+    // Clear override when steps are changed so auto-calc takes over
+    setOverrideStatus(null)
   }
+
+  const calculatedStatus = hasSteps ? calcStatus(stepResults, tc.steps.length) : null
+  const effectiveStatus: TestStatus | null = overrideStatus ?? (
+    calculatedStatus === 'In Progress' || calculatedStatus === null ? null : calculatedStatus
+  )
+  const canSave = effectiveStatus !== null
 
   const STATUS_BTNS: { status: TestStatus; activeCls: string; hoverCls: string }[] = [
     { status: 'Pass',    activeCls: 'bg-emerald-600 border-emerald-600 text-white', hoverCls: 'hover:border-emerald-400 hover:text-emerald-600 dark:hover:text-emerald-400' },
@@ -326,7 +351,7 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
         </div>
       )}
 
-      {tc.steps.length > 0 && (
+      {hasSteps && (
         <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
             <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Test Steps</p>
@@ -382,15 +407,34 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
         </div>
       )}
 
+      {/* Calculated result display */}
+      {hasSteps && calculatedStatus && (
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border ${CALC_STATUS_STYLE[calculatedStatus] ?? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-500'}`}>
+          <span className="text-xs font-semibold uppercase tracking-wide opacity-70">Calculated Result</span>
+          <span className="text-sm font-bold">{calculatedStatus}</span>
+          {overrideStatus && (
+            <span className="ml-auto text-[11px] opacity-60">(overridden → {overrideStatus})</span>
+          )}
+        </div>
+      )}
+
+      {/* Override / manual status */}
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5">
-        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">Overall Result</p>
+        <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-1">
+          {hasSteps ? 'Override Result' : 'Overall Result'}
+        </p>
+        {hasSteps && (
+          <p className="text-xs text-zinc-400 dark:text-zinc-600 mb-3">
+            Auto-calculated from step results. Select below to override.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2">
           {STATUS_BTNS.map(({ status, activeCls, hoverCls }) => (
             <button
               key={status}
-              onClick={() => setFinalStatus(finalStatus === status ? null : status)}
+              onClick={() => setOverrideStatus(overrideStatus === status ? null : status)}
               className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${
-                finalStatus === status
+                overrideStatus === status
                   ? activeCls
                   : `bg-transparent border-zinc-300 dark:border-zinc-600 text-zinc-600 dark:text-zinc-400 ${hoverCls}`
               }`}
@@ -399,8 +443,10 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
             </button>
           ))}
         </div>
-        {!finalStatus && (
-          <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-2">Select an overall result to save</p>
+        {!canSave && (
+          <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-2">
+            {hasSteps ? 'Mark all steps or select an override to save.' : 'Select an overall result to save.'}
+          </p>
         )}
       </div>
 
@@ -412,8 +458,8 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
           Cancel
         </button>
         <button
-          onClick={() => finalStatus && onSave(finalStatus)}
-          disabled={!finalStatus}
+          onClick={() => effectiveStatus && onSave(effectiveStatus)}
+          disabled={!canSave}
           className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
         >
           <CheckCircle2 className="w-4 h-4" />Save Result

@@ -11,6 +11,7 @@ import TestSuiteList from './components/testsuites/TestSuiteList'
 import TestRunner from './components/testrunner/TestRunner'
 import UserManagement from './components/users/UserManagement'
 import LoginPage from './components/auth/LoginPage'
+import AIAssistant from './components/ai/AIAssistant'
 import { FlaskConical } from 'lucide-react'
 import type { TestCase, TestSuite, UserRole } from './types'
 
@@ -169,6 +170,21 @@ export default function App() {
               users={store.users}
               onSave={handleSaveUser}
               onDelete={(id) => void store.deleteUser(id)}
+            />
+          )}
+
+          {currentView === 'ai' && (
+            <AIAssistant
+              testSuites={store.testSuites}
+              existingTestCaseIds={store.testCases.map(tc => tc.testCaseId)}
+              onImport={async (suite, cases) => {
+                const suiteId = await store.addTestSuite(suite)
+                if (!suiteId) return
+                for (const tc of cases) {
+                  await store.addTestCase({ ...tc, testSuiteId: suiteId })
+                }
+              }}
+              onNavigate={(view) => setCurrentView(view)}
             />
           )}
 

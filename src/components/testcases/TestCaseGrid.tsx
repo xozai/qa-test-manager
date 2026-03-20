@@ -92,6 +92,16 @@ export default function TestCaseGrid({
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [showAllPills, setShowAllPills] = useState(false)
+
+  const PILL_LIMIT = 7
+  const visibleSuitesList = testSuites.filter(s => !s.isHidden)
+  const pillSuites = showAllPills ? visibleSuitesList : visibleSuitesList.slice(0, PILL_LIMIT)
+  const overflowCount = visibleSuitesList.length - PILL_LIMIT
+
+  function handlePillClick(suiteId: string) {
+    setFilters(prev => ({ ...prev, testSuiteId: prev.testSuiteId === suiteId ? '' : suiteId }))
+  }
 
   const suiteMap = useMemo(
     () => Object.fromEntries(testSuites.map(s => [s.id, s.name])),
@@ -319,6 +329,67 @@ export default function TestCaseGrid({
           </div>
         )}
       </div>
+
+      {/* Suite quick-filter pills */}
+      {visibleSuitesList.length > 0 && (
+        <div className="flex-shrink-0 px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center gap-1.5">
+          <button
+            onClick={() => setFilters(prev => ({ ...prev, testSuiteId: '' }))}
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              !filters.testSuiteId
+                ? 'bg-indigo-600 text-white'
+                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+            }`}
+          >
+            All
+            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+              !filters.testSuiteId ? 'bg-indigo-500 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400'
+            }`}>
+              {testCases.length}
+            </span>
+          </button>
+
+          {pillSuites.map(suite => {
+            const count = testCases.filter(tc => tc.testSuiteId === suite.id).length
+            const isActive = filters.testSuiteId === suite.id
+            return (
+              <button
+                key={suite.id}
+                onClick={() => handlePillClick(suite.id)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                  isActive
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                }`}
+              >
+                <span className="max-w-[120px] truncate">{suite.name}</span>
+                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${
+                  isActive ? 'bg-indigo-500 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400'
+                }`}>
+                  {count}
+                </span>
+              </button>
+            )
+          })}
+
+          {!showAllPills && overflowCount > 0 && (
+            <button
+              onClick={() => setShowAllPills(true)}
+              className="px-3 py-1 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            >
+              +{overflowCount} more
+            </button>
+          )}
+          {showAllPills && overflowCount > 0 && (
+            <button
+              onClick={() => setShowAllPills(false)}
+              className="px-3 py-1 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+            >
+              Show less
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Table */}
       <div className="flex-1 overflow-auto">

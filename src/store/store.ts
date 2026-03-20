@@ -261,15 +261,16 @@ export function useTestStore() {
   }, [])
 
   // ── Test Suites ───────────────────────────────────────────────────────────
-  const addTestSuite = useCallback(async (suite: Omit<TestSuite, 'id'>) => {
-    await supabase.from('test_suites').insert({
+  const addTestSuite = useCallback(async (suite: Omit<TestSuite, 'id'>): Promise<string | null> => {
+    const { data } = await supabase.from('test_suites').insert({
       name: suite.name,
       description: suite.description,
       owner_id: suite.ownerId || null,
       jira_number: suite.jiraNumber,
       is_hidden: suite.isHidden,
       attributes: suite.attributes ?? [],
-    })
+    }).select('id').single()
+    return data?.id ?? null
   }, [])
 
   const updateTestSuite = useCallback(async (id: string, data: Partial<Omit<TestSuite, 'id'>>) => {

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download } from 'lucide-react'
+import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download, GitBranch, CornerDownRight } from 'lucide-react'
 import type { TestCase, TestSuite, User, SortConfig, Priority, TestStatus } from '../../types'
 import Badge from '../common/Badge'
 import ConfirmDialog from '../common/ConfirmDialog'
@@ -39,6 +39,11 @@ const COLUMNS: ColumnDef[] = [
 const PRIORITY_OPTIONS: Priority[] = ['High', 'Med', 'Low']
 const STATUS_OPTIONS: TestStatus[] = ['Pass', 'Fail', 'Blocked', 'Skipped', 'Not Run']
 
+function allParent(tc: TestCase, all: TestCase[]): string {
+  const p = all.find(t => t.id === tc.parentId)
+  return p ? `${p.testCaseId}: ${p.title}` : 'unknown'
+}
+
 const PRIORITY_RANK: Record<string, number> = { High: 3, Med: 2, Low: 1 }
 const STATUS_RANK: Record<string, number> = { Fail: 5, Blocked: 4, Skipped: 3, 'Not Run': 2, Pass: 1, Untested: 0 }
 
@@ -57,12 +62,15 @@ function SortIcon({ col, sorts }: { col: ColumnKey; sorts: SortConfig[] }) {
   )
 }
 
+type RelationshipFilter = 'all' | 'parents' | 'children' | 'standalone'
+
 interface Filters {
   testSuiteId: string
   priority: string
   qaStatus: string
   uatStatus: string
   batStatus: string
+  relationship: RelationshipFilter
 }
 
 const EMPTY_FILTERS: Filters = {
@@ -71,6 +79,7 @@ const EMPTY_FILTERS: Filters = {
   qaStatus: '',
   uatStatus: '',
   batStatus: '',
+  relationship: 'all',
 }
 
 export default function TestCaseGrid({
@@ -129,6 +138,9 @@ export default function TestCaseGrid({
     if (filters.qaStatus) result = result.filter(tc => tc.qaStatus === filters.qaStatus)
     if (filters.uatStatus) result = result.filter(tc => tc.uatStatus === filters.uatStatus)
     if (filters.batStatus) result = result.filter(tc => tc.batStatus === filters.batStatus)
+    if (filters.relationship === 'parents')    result = result.filter(tc => tc.isParent)
+    if (filters.relationship === 'children')   result = result.filter(tc => !!tc.parentId)
+    if (filters.relationship === 'standalone') result = result.filter(tc => !tc.isParent && !tc.parentId)
 
     if (sorts.length === 0) return result
 
@@ -150,7 +162,7 @@ export default function TestCaseGrid({
     })
   }, [testCases, search, filters, sorts])
 
-  const activeFilterCount = Object.values(filters).filter(Boolean).length
+  const activeFilterCount = Object.entries(filters).filter(([k, v]) => k === 'relationship' ? v !== 'all' : Boolean(v)).length
 
   const handleSetFilter = (key: keyof Filters, value: string) => {
     setFilters(prev => ({ ...prev, [key]: value }))
@@ -246,7 +258,7 @@ export default function TestCaseGrid({
         </div>
 
         {showFilters && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             <select
               value={filters.testSuiteId}
               onChange={e => handleSetFilter('testSuiteId', e.target.value)}
@@ -293,6 +305,17 @@ export default function TestCaseGrid({
               <option value="">BAT: All</option>
               {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
+
+            <select
+              value={filters.relationship}
+              onChange={e => handleSetFilter('relationship', e.target.value)}
+              className="px-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-violet-500"
+            >
+              <option value="all">All Types</option>
+              <option value="parents">Parents Only</option>
+              <option value="children">Children Only</option>
+              <option value="standalone">Standalone Only</option>
+            </select>
           </div>
         )}
       </div>
@@ -303,6 +326,7 @@ export default function TestCaseGrid({
           <thead className="sticky top-0 z-10 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
             <tr>
               <th className="w-8 px-2 py-3" />
+              <th className="w-8 px-2 py-3" title="Relationships" />
               {COLUMNS.map(col => (
                 <th
                   key={col.key}
@@ -323,7 +347,7 @@ export default function TestCaseGrid({
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800/60">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length + 2} className="px-4 py-16 text-center text-sm text-zinc-500">
+                <td colSpan={COLUMNS.length + 3} className="px-4 py-16 text-center text-sm text-zinc-500">
                   {testCases.length === 0 ? 'No test cases yet. Create your first one.' : 'No results match your filters.'}
                 </td>
               </tr>
@@ -333,13 +357,15 @@ export default function TestCaseGrid({
                 const attrs = suite?.attributes ?? []
                 const isExpanded = expandedId === tc.id
                 const hasAttrs = attrs.length > 0
+                const tcChildren = testCases.filter(t => t.parentId === tc.id)
+                const isChildrenExpanded = expandedId === `${tc.id}-children`
 
                 return [
                   <tr
                     key={tc.id}
                     className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors group"
                   >
-                    {/* Expand toggle */}
+                    {/* Expand attrs toggle */}
                     <td className="px-2 py-3 w-8">
                       {hasAttrs && (
                         <button
@@ -351,6 +377,23 @@ export default function TestCaseGrid({
                             ? <ChevronDown className="w-3.5 h-3.5" />
                             : <ChevronRight className="w-3.5 h-3.5" />}
                         </button>
+                      )}
+                    </td>
+                    {/* Relationship icon */}
+                    <td className="px-2 py-3 w-8">
+                      {tc.isParent && (
+                        <button
+                          onClick={() => setExpandedId(isChildrenExpanded ? null : `${tc.id}-children`)}
+                          title={`Parent — ${tcChildren.length} child${tcChildren.length !== 1 ? 'ren' : ''}`}
+                          className="p-1 rounded text-violet-500 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
+                        >
+                          <GitBranch className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {!!tc.parentId && !tc.isParent && (
+                        <span title={`Child of ${allParent(tc, testCases)}`} className="flex items-center justify-center text-violet-400 pl-1">
+                          <CornerDownRight className="w-3.5 h-3.5" />
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -414,7 +457,7 @@ export default function TestCaseGrid({
                   // Expandable attribute detail row
                   ...(isExpanded && hasAttrs ? [
                     <tr key={`${tc.id}-attrs`} className="bg-zinc-50/60 dark:bg-zinc-900/60 border-b border-zinc-200/40 dark:border-zinc-800/40">
-                      <td colSpan={COLUMNS.length + 2} className="px-6 py-4">
+                      <td colSpan={COLUMNS.length + 3} className="px-6 py-4">
                         <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">
                           Custom Attributes — {suite?.name}
                         </p>
@@ -429,6 +472,31 @@ export default function TestCaseGrid({
                                     ? (val ? 'Yes' : 'No')
                                     : ((val as string) || <span className="text-zinc-400 dark:text-zinc-600">—</span>)}
                                 </p>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  ] : []),
+
+                  // Expandable children sub-row
+                  ...(isChildrenExpanded && tc.isParent ? [
+                    <tr key={`${tc.id}-children`} className="bg-violet-50/40 dark:bg-violet-900/10 border-b border-violet-200/40 dark:border-violet-800/30">
+                      <td colSpan={COLUMNS.length + 3} className="px-6 py-3">
+                        <p className="text-xs font-medium text-violet-600 dark:text-violet-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                          <GitBranch className="w-3 h-3" />Children ({tcChildren.length})
+                        </p>
+                        <div className="space-y-1">
+                          {tcChildren.map(child => {
+                            const cfg = child.inheritanceConfig
+                            const inherited = [cfg?.inheritPreconditions && 'Preconditions', cfg?.inheritTestData && 'Test Data', cfg?.inheritSteps && 'Steps', cfg?.inheritAttributes && 'Attributes'].filter(Boolean).join(', ')
+                            return (
+                              <div key={child.id} className="flex items-center gap-3 text-xs">
+                                <CornerDownRight className="w-3 h-3 text-violet-400 flex-shrink-0" />
+                                <span className="font-mono text-indigo-400 w-16">{child.testCaseId}</span>
+                                <span className="text-zinc-700 dark:text-zinc-300">{child.title}</span>
+                                {inherited && <span className="text-violet-500 dark:text-violet-400 text-[10px]">↙ {inherited}</span>}
                               </div>
                             )
                           })}

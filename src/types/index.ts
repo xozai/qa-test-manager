@@ -38,6 +38,16 @@ export interface TestStep {
   expectedResult: string
 }
 
+export interface InheritanceConfig {
+  id: string
+  childId: string
+  parentId: string
+  inheritPreconditions: boolean
+  inheritTestData: boolean
+  inheritSteps: boolean
+  inheritAttributes: boolean
+}
+
 export interface TestCase {
   id: string
   testCaseId: string
@@ -52,6 +62,9 @@ export interface TestCase {
   priority: Priority
   testSuiteId: string
   attributeValues: Record<string, string | boolean>
+  parentId?: string | null
+  inheritanceConfig?: InheritanceConfig | null
+  isParent?: boolean
   createdAt?: string
   updatedAt?: string
 }

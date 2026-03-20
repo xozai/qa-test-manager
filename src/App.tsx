@@ -45,11 +45,21 @@ export default function App() {
     setTcModalOpen(true)
   }
 
-  function handleSaveCase(tc: TestCase) {
+  function handleSaveCase(tc: TestCase, _propagate: boolean) {
     if (editingCase) void store.updateTestCase(editingCase.id, tc)
     else             void store.addTestCase(tc)
     setTcModalOpen(false)
     setEditingCase(null)
+  }
+
+  function handleDeleteCase(id: string) {
+    const children = store.testCases.filter(t => t.parentId === id)
+    if (children.length > 0) {
+      const names = children.slice(0, 3).map(c => c.testCaseId).join(', ')
+      const extra = children.length > 3 ? ` + ${children.length - 3} more` : ''
+      if (!window.confirm(`This test case is a parent of ${children.length} child(ren): ${names}${extra}.\n\nDeleting it will unlink all children (they keep their current values). Continue?`)) return
+    }
+    void store.deleteTestCase(id)
   }
 
   function handleSaveSuite(suite: TestSuite) {
@@ -124,7 +134,7 @@ export default function App() {
               users={store.users}
               onAdd={handleAddCase}
               onEdit={handleEditCase}
-              onDelete={(id) => void store.deleteTestCase(id)}
+              onDelete={handleDeleteCase}
               onDuplicate={(tc) => void store.copyTestCase(tc.id)}
               onImportCSV={() => {}}
               onExportCSV={() => {}}
@@ -169,8 +179,12 @@ export default function App() {
         isOpen={tcModalOpen}
         onClose={() => { setTcModalOpen(false); setEditingCase(null) }}
         onSave={handleSaveCase}
+        onLinkChild={(childId, parentId, cfg) => void store.linkChildToParent(childId, parentId, cfg)}
+        onUpdateInheritance={(childId, cfg, parentId) => void store.updateInheritance(childId, cfg, parentId)}
+        onUnlinkChild={(childId) => void store.unlinkChild(childId)}
         testCase={editingCase}
         testSuites={store.testSuites}
+        allTestCases={store.testCases}
         existingIds={store.testCases.map(tc => tc.testCaseId)}
       />
     </div>

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from 'react'
 import {
   Play, ChevronLeft, ChevronRight, CheckCircle2, XCircle,
   Download, Eye, ChevronUp, ChevronDown, ChevronsUpDown,
-  FolderOpen, User as UserIcon,
+  FolderOpen, User as UserIcon, BookmarkPlus, BookOpen, Trash2, Paperclip, X,
 } from 'lucide-react'
 import Papa from 'papaparse'
 import type { TestCase, TestSuite, User, TesterRole, TestStatus, AttributeDef } from '../../types'
@@ -272,8 +272,26 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
 }) {
   const [stepResults, setStepResults] = useState<Record<number, 'Pass' | 'Fail'>>({})
   const [overrideStatus, setOverrideStatus] = useState<TestStatus | null>(null)
+  // Attachments: stepIndex → array of { name, url, type }
+  const [attachments, setAttachments] = useState<Record<number, { name: string; url: string; type: string }[]>>({})
   const suiteAttrs = suite?.attributes ?? []
   const hasSteps = tc.steps.length > 0
+
+  function handleAttachFile(stepIdx: number, file: File) {
+    // Create a local object URL for in-session preview (not persisted to DB)
+    const url = URL.createObjectURL(file)
+    setAttachments(prev => ({
+      ...prev,
+      [stepIdx]: [...(prev[stepIdx] ?? []), { name: file.name, url, type: file.type }],
+    }))
+  }
+
+  function removeAttachment(stepIdx: number, attachIdx: number) {
+    setAttachments(prev => ({
+      ...prev,
+      [stepIdx]: (prev[stepIdx] ?? []).filter((_, i) => i !== attachIdx),
+    }))
+  }
 
   function toggleStep(i: number, result: 'Pass' | 'Fail') {
     setStepResults(prev => {
@@ -398,8 +416,42 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
                       >
                         <XCircle className="w-3 h-3" />Fail
                       </button>
+                      {/* Attachment upload */}
+                      <label title="Attach screenshot or file" className="cursor-pointer p-1.5 rounded-md border border-zinc-300 dark:border-zinc-600 text-zinc-500 hover:border-indigo-400 hover:text-indigo-500 transition-colors">
+                        <Paperclip className="w-3 h-3" />
+                        <input type="file" accept="image/*,.pdf" className="sr-only" onChange={e => {
+                          const file = e.target.files?.[0]
+                          if (file) handleAttachFile(i, file)
+                          e.target.value = ''
+                        }} />
+                      </label>
                     </div>
                   </div>
+                  {/* Attachment thumbnails */}
+                  {(attachments[i] ?? []).length > 0 && (
+                    <div className="mt-2 pl-9 flex flex-wrap gap-2">
+                      {(attachments[i] ?? []).map((att, ai) => (
+                        <div key={ai} className="relative group/att">
+                          {att.type.startsWith('image/') ? (
+                            <a href={att.url} target="_blank" rel="noopener noreferrer">
+                              <img src={att.url} alt={att.name} className="h-12 w-16 object-cover rounded border border-zinc-200 dark:border-zinc-700" />
+                            </a>
+                          ) : (
+                            <a href={att.url} target="_blank" rel="noopener noreferrer" download={att.name}
+                              className="flex items-center gap-1 px-2 py-1 rounded border border-zinc-200 dark:border-zinc-700 text-xs text-indigo-500 hover:underline">
+                              <Paperclip className="w-3 h-3" />{att.name}
+                            </a>
+                          )}
+                          <button
+                            onClick={() => removeAttachment(i, ai)}
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover/att:opacity-100 transition-opacity"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -469,6 +521,27 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
   )
 }
 
+// ── Run Template type ─────────────────────────────────────────────────────────
+
+interface RunTemplate {
+  id: string
+  name: string
+  suiteIds: string[]
+  executorId: string
+  role: TesterRole
+}
+
+const TEMPLATES_KEY = 'qa-run-templates'
+
+function loadTemplates(): RunTemplate[] {
+  try { return JSON.parse(localStorage.getItem(TEMPLATES_KEY) ?? '[]') as RunTemplate[] }
+  catch { return [] }
+}
+
+function saveTemplates(templates: RunTemplate[]) {
+  localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates))
+}
+
 // ── Main TestRunner ────────────────────────────────────────────────────────────
 
 export default function TestRunner({ testSuites, testCases, users, onUpdateTestCase }: TestRunnerProps) {
@@ -479,6 +552,41 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
   const [sorts, setSorts] = useState<RunnerSortConfig[]>([])
   const [viewingCase, setViewingCase] = useState<TestCase | null>(null)
   const [executingCase, setExecutingCase] = useState<TestCase | null>(null)
+
+  // Templates
+  const [templates, setTemplates] = useState<RunTemplate[]>(loadTemplates)
+  const [templateName, setTemplateName] = useState('')
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false)
+  const [showLoadTemplate, setShowLoadTemplate] = useState(false)
+
+  function handleSaveTemplate() {
+    if (!templateName.trim()) return
+    const t: RunTemplate = {
+      id: Date.now().toString(36),
+      name: templateName.trim(),
+      suiteIds: selectedSuiteIds,
+      executorId,
+      role: testerRole,
+    }
+    const updated = [...templates, t]
+    setTemplates(updated)
+    saveTemplates(updated)
+    setTemplateName('')
+    setShowSaveTemplate(false)
+  }
+
+  function handleLoadTemplate(t: RunTemplate) {
+    setSelectedSuiteIds(t.suiteIds)
+    setExecutorId(t.executorId)
+    setTesterRole(t.role)
+    setShowLoadTemplate(false)
+  }
+
+  function handleDeleteTemplate(id: string) {
+    const updated = templates.filter(t => t.id !== id)
+    setTemplates(updated)
+    saveTemplates(updated)
+  }
 
   const visibleSuites = useMemo(() => testSuites.filter(s => !s.isHidden), [testSuites])
 
@@ -730,6 +838,57 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
                 <p key={label} className="text-zinc-700 dark:text-zinc-300">
                   <span className="text-zinc-500">{label}: </span>{val}
                 </p>
+              ))}
+            </div>
+          )}
+
+          {/* Template controls */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setShowSaveTemplate(v => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors"
+            >
+              <BookmarkPlus className="w-3.5 h-3.5" />Save as Template
+            </button>
+            {templates.length > 0 && (
+              <button
+                onClick={() => setShowLoadTemplate(v => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+              >
+                <BookOpen className="w-3.5 h-3.5" />Load Template ({templates.length})
+              </button>
+            )}
+          </div>
+
+          {showSaveTemplate && (
+            <div className="flex items-center gap-2 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+              <input
+                type="text"
+                placeholder="Template name…"
+                value={templateName}
+                onChange={e => setTemplateName(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSaveTemplate()}
+                className="flex-1 px-3 py-1.5 text-sm bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              />
+              <button onClick={handleSaveTemplate} disabled={!templateName.trim()} className="px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-lg transition-colors">Save</button>
+              <button onClick={() => setShowSaveTemplate(false)} className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><X className="w-4 h-4" /></button>
+            </div>
+          )}
+
+          {showLoadTemplate && templates.length > 0 && (
+            <div className="p-3 bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700 rounded-xl space-y-1">
+              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-2">Saved Templates</p>
+              {templates.map(t => (
+                <div key={t.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-700/60 transition-colors group">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">{t.name}</p>
+                    <p className="text-xs text-zinc-500">{t.suiteIds.length} suite{t.suiteIds.length !== 1 ? 's' : ''} · {t.role}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button onClick={() => handleLoadTemplate(t)} className="px-2.5 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded transition-colors">Load</button>
+                    <button onClick={() => handleDeleteTemplate(t.id)} className="p-1 text-zinc-400 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                </div>
               ))}
             </div>
           )}

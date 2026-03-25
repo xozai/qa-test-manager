@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download, GitBranch, CornerDownRight } from 'lucide-react'
+import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download, GitBranch, CornerDownRight, CheckSquare } from 'lucide-react'
 import type { TestCase, TestSuite, User, SortConfig, Priority, TestStatus } from '../../types'
 import Badge from '../common/Badge'
 import ConfirmDialog from '../common/ConfirmDialog'
@@ -14,6 +14,9 @@ interface TestCaseGridProps {
   onDuplicate: (tc: TestCase) => void
   onImportCSV: () => void
   onExportCSV: () => void
+  onBulkDelete?: (ids: string[]) => void
+  onBulkUpdateStatus?: (ids: string[], field: 'qaStatus' | 'uatStatus' | 'batStatus', status: TestStatus) => void
+  onBulkMove?: (ids: string[], suiteId: string) => void
 }
 
 type ColumnKey = keyof TestCase
@@ -85,6 +88,7 @@ const EMPTY_FILTERS: Filters = {
 export default function TestCaseGrid({
   testCases, testSuites, users: _users,
   onAdd, onEdit, onDelete, onDuplicate, onImportCSV, onExportCSV,
+  onBulkDelete, onBulkUpdateStatus, onBulkMove,
 }: TestCaseGridProps) {
   const [sorts, setSorts] = useState<SortConfig[]>([])
   const [search, setSearch] = useState('')
@@ -93,6 +97,12 @@ export default function TestCaseGrid({
   const [showFilters, setShowFilters] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showAllPills, setShowAllPills] = useState(false)
+
+  // Bulk selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
+  const [bulkMoveTarget, setBulkMoveTarget] = useState('')
+  const [showBulkStatusMenu, setShowBulkStatusMenu] = useState(false)
 
   const PILL_LIMIT = 7
   const visibleSuitesList = testSuites.filter(s => !s.isHidden)
@@ -181,6 +191,57 @@ export default function TestCaseGrid({
   const clearFilters = () => {
     setFilters(EMPTY_FILTERS)
     setSearch('')
+  }
+
+  // ── Bulk selection helpers ────────────────────────────────────────────────
+  const filteredIds = useMemo(() => filtered.map(tc => tc.id), [filtered])
+  const allSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id))
+  const someSelected = filteredIds.some(id => selectedIds.has(id))
+  const selectedCount = [...selectedIds].filter(id => filteredIds.includes(id)).length
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredIds))
+    }
+  }
+
+  function toggleRow(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+    setBulkMoveTarget('')
+    setShowBulkStatusMenu(false)
+  }
+
+  function handleBulkDelete() {
+    if (onBulkDelete) {
+      onBulkDelete([...selectedIds])
+      clearSelection()
+    }
+    setBulkDeleteConfirm(false)
+  }
+
+  function handleBulkStatus(field: 'qaStatus' | 'uatStatus' | 'batStatus') {
+    if (onBulkUpdateStatus) {
+      onBulkUpdateStatus([...selectedIds], field, 'Not Run')
+      clearSelection()
+    }
+    setShowBulkStatusMenu(false)
+  }
+
+  function handleBulkMove() {
+    if (onBulkMove && bulkMoveTarget) {
+      onBulkMove([...selectedIds], bulkMoveTarget)
+      clearSelection()
+    }
   }
 
   const toDeleteCase = testCases.find(tc => tc.id === deleteId)
@@ -396,6 +457,20 @@ export default function TestCaseGrid({
         <table className="w-full text-sm min-w-[900px]">
           <thead className="sticky top-0 z-10 bg-white dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800">
             <tr>
+              {/* Select-all checkbox */}
+              <th className="w-10 px-3 py-3">
+                <button
+                  onClick={toggleSelectAll}
+                  className="text-zinc-400 hover:text-indigo-500 transition-colors"
+                  title={allSelected ? 'Deselect all' : 'Select all'}
+                >
+                  {allSelected
+                    ? <CheckSquare className="w-4 h-4 text-indigo-500" />
+                    : someSelected
+                      ? <CheckSquare className="w-4 h-4 text-indigo-400 opacity-50" />
+                      : <div className="w-4 h-4 rounded border-2 border-zinc-300 dark:border-zinc-600" />}
+                </button>
+              </th>
               <th className="w-8 px-2 py-3" />
               <th className="w-8 px-2 py-3" title="Relationships" />
               {COLUMNS.map(col => (
@@ -418,7 +493,7 @@ export default function TestCaseGrid({
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800/60">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length + 3} className="px-4 py-16 text-center text-sm text-zinc-500">
+                <td colSpan={COLUMNS.length + 4} className="px-4 py-16 text-center text-sm text-zinc-500">
                   {testCases.length === 0 ? 'No test cases yet. Create your first one.' : 'No results match your filters.'}
                 </td>
               </tr>
@@ -430,12 +505,24 @@ export default function TestCaseGrid({
                 const hasAttrs = attrs.length > 0
                 const tcChildren = testCases.filter(t => t.parentId === tc.id)
                 const isChildrenExpanded = expandedId === `${tc.id}-children`
+                const isSelected = selectedIds.has(tc.id)
 
                 return [
                   <tr
                     key={tc.id}
-                    className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors group"
+                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors group ${isSelected ? 'bg-indigo-50/50 dark:bg-indigo-900/10' : ''}`}
                   >
+                    {/* Row checkbox */}
+                    <td className="px-3 py-3 w-10">
+                      <button
+                        onClick={() => toggleRow(tc.id)}
+                        className="text-zinc-400 hover:text-indigo-500 transition-colors"
+                      >
+                        {isSelected
+                          ? <CheckSquare className="w-4 h-4 text-indigo-500" />
+                          : <div className="w-4 h-4 rounded border-2 border-zinc-300 dark:border-zinc-600 group-hover:border-indigo-400 transition-colors" />}
+                      </button>
+                    </td>
                     {/* Expand attrs toggle */}
                     <td className="px-2 py-3 w-8">
                       {hasAttrs && (
@@ -528,7 +615,7 @@ export default function TestCaseGrid({
                   // Expandable attribute detail row
                   ...(isExpanded && hasAttrs ? [
                     <tr key={`${tc.id}-attrs`} className="bg-zinc-50/60 dark:bg-zinc-900/60 border-b border-zinc-200/40 dark:border-zinc-800/40">
-                      <td colSpan={COLUMNS.length + 3} className="px-6 py-4">
+                      <td colSpan={COLUMNS.length + 4} className="px-6 py-4">
                         <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">
                           Custom Attributes — {suite?.name}
                         </p>
@@ -554,7 +641,7 @@ export default function TestCaseGrid({
                   // Expandable children sub-row
                   ...(isChildrenExpanded && tc.isParent ? [
                     <tr key={`${tc.id}-children`} className="bg-violet-50/40 dark:bg-violet-900/10 border-b border-violet-200/40 dark:border-violet-800/30">
-                      <td colSpan={COLUMNS.length + 3} className="px-6 py-3">
+                      <td colSpan={COLUMNS.length + 4} className="px-6 py-3">
                         <p className="text-xs font-medium text-violet-600 dark:text-violet-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                           <GitBranch className="w-3 h-3" />Children ({tcChildren.length})
                         </p>
@@ -582,6 +669,80 @@ export default function TestCaseGrid({
         </table>
       </div>
 
+      {/* ── Bulk Action Bar ────────────────────────────────────────────────────── */}
+      {selectedCount > 0 && (
+        <div className="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-6 py-3 flex items-center gap-3 flex-wrap">
+          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            {selectedCount} selected
+          </span>
+          <div className="h-4 w-px bg-zinc-300 dark:bg-zinc-700" />
+
+          {/* Reset Status submenu */}
+          <div className="relative">
+            <button
+              onClick={() => setShowBulkStatusMenu(v => !v)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+            >
+              Reset Status
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            {showBulkStatusMenu && (
+              <div className="absolute bottom-full mb-1 left-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-20 py-1 min-w-[160px]">
+                {(['qaStatus', 'uatStatus', 'batStatus'] as const).map(field => (
+                  <button
+                    key={field}
+                    onClick={() => handleBulkStatus(field)}
+                    className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    Reset {field === 'qaStatus' ? 'QA' : field === 'uatStatus' ? 'UAT' : 'BAT'} → Not Run
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Move to Suite */}
+          <div className="flex items-center gap-1.5">
+            <select
+              value={bulkMoveTarget}
+              onChange={e => setBulkMoveTarget(e.target.value)}
+              className="px-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">Move to suite…</option>
+              {testSuites.filter(s => !s.isHidden).map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={handleBulkMove}
+              disabled={!bulkMoveTarget}
+              className="px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Move
+            </button>
+          </div>
+
+          {/* Delete */}
+          {onBulkDelete && (
+            <button
+              onClick={() => setBulkDeleteConfirm(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors"
+            >
+              <Trash2 className="w-3 h-3" />
+              Delete Selected
+            </button>
+          )}
+
+          <button
+            onClick={clearSelection}
+            className="ml-auto text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
+      {/* Single delete confirm */}
       <ConfirmDialog
         isOpen={deleteId !== null}
         onClose={() => setDeleteId(null)}
@@ -589,6 +750,17 @@ export default function TestCaseGrid({
         title="Delete Test Case"
         message={`Delete "${toDeleteCase?.testCaseId}: ${toDeleteCase?.title}"? This action cannot be undone.`}
         confirmLabel="Delete"
+        danger
+      />
+
+      {/* Bulk delete confirm */}
+      <ConfirmDialog
+        isOpen={bulkDeleteConfirm}
+        onClose={() => setBulkDeleteConfirm(false)}
+        onConfirm={handleBulkDelete}
+        title="Delete Selected Test Cases"
+        message={`Delete ${selectedCount} selected test case${selectedCount !== 1 ? 's' : ''}? This action cannot be undone.`}
+        confirmLabel={`Delete ${selectedCount}`}
         danger
       />
     </div>

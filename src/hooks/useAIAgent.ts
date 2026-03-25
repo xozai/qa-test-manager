@@ -8,7 +8,7 @@
  * env var approach here is acceptable.
  */
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import type { TestStep, Priority } from '../types'
 
 export interface GeneratedTestCase {
@@ -150,4 +150,88 @@ export function useAIAgent() {
   }
 
   return { generate, loading, error, result, reset }
+}
+
+// ── useEdgeCaseSuggestions ────────────────────────────────────────────────────
+// Separate lightweight hook for suggesting additional steps for an existing test case.
+
+export function useEdgeCaseSuggestions() {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [suggestions, setSuggestions] = useState<TestStep[]>([])
+
+  const suggest = useCallback(async (title: string, description: string, existingSteps: TestStep[]) => {
+    const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY
+    if (!apiKey) {
+      setError('No API key configured. Add VITE_ANTHROPIC_API_KEY to your .env.local file.')
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+    setSuggestions([])
+
+    const stepsSummary = existingSteps
+      .filter(s => s.action.trim())
+      .map((s, i) => `Step ${i + 1}: ${s.action}`)
+      .join('\n')
+
+    const prompt = `Test case title: "${title}"
+${description ? `Description: "${description}"` : ''}
+${stepsSummary ? `Existing steps:\n${stepsSummary}` : ''}
+
+Suggest 3 to 5 additional edge-case or negative test steps that are NOT already covered by the existing steps above. Focus on: boundary values, invalid inputs, error states, and edge conditions.
+
+Return ONLY a JSON array (no markdown, no explanation):
+[
+  { "action": "string", "expectedResult": "string" }
+]`
+
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5',
+          max_tokens: 1024,
+          messages: [{ role: 'user', content: prompt }],
+        }),
+      })
+
+      if (!response.ok) {
+        const body = await response.text()
+        throw new Error(`API error ${response.status}: ${body}`)
+      }
+
+      const data = await response.json() as { content: { type: string; text: string }[] }
+      const raw = data.content.find(c => c.type === 'text')?.text ?? ''
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+
+      let parsed: TestStep[]
+      try {
+        parsed = JSON.parse(cleaned) as TestStep[]
+      } catch {
+        throw new Error('Unexpected response format. Please try again.')
+      }
+
+      if (!Array.isArray(parsed)) throw new Error('Unexpected response format.')
+      setSuggestions(parsed.filter(s => s.action && s.expectedResult))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred.')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  function clearSuggestions() {
+    setSuggestions([])
+    setError(null)
+  }
+
+  return { suggest, loading, error, suggestions, clearSuggestions }
 }

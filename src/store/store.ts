@@ -442,6 +442,24 @@ export function useTestStore() {
     await reloadCases()
   }, [])
 
+  const bulkDeleteTestCases = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) return
+    await supabase.from('test_cases').delete().in('id', ids)
+  }, [])
+
+  const bulkUpdateTestCases = useCallback(async (
+    ids: string[],
+    patch: Partial<Pick<TestCase, 'qaStatus' | 'uatStatus' | 'batStatus' | 'testSuiteId'>>,
+  ) => {
+    if (ids.length === 0) return
+    const dbPatch: Record<string, unknown> = {}
+    if (patch.qaStatus    !== undefined) dbPatch.qa_status     = patch.qaStatus
+    if (patch.uatStatus   !== undefined) dbPatch.uat_status    = patch.uatStatus
+    if (patch.batStatus   !== undefined) dbPatch.bat_status    = patch.batStatus
+    if (patch.testSuiteId !== undefined) dbPatch.test_suite_id = patch.testSuiteId || null
+    await supabase.from('test_cases').update(dbPatch).in('id', ids)
+  }, [])
+
   const copyTestCase = useCallback(async (sourceId: string, targetSuiteId?: string) => {
     const source = testCases.find(t => t.id === sourceId)
     if (!source) return
@@ -512,6 +530,8 @@ export function useTestStore() {
     updateTestCase,
     deleteTestCase,
     copyTestCase,
+    bulkDeleteTestCases,
+    bulkUpdateTestCases,
     saveRun,
     linkChildToParent,
     updateInheritance,

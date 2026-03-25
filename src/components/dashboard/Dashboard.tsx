@@ -1,4 +1,5 @@
-import { FlaskConical, FolderOpen, AlertTriangle, Clock, TrendingUp, Activity } from 'lucide-react'
+import { useState } from 'react'
+import { FlaskConical, FolderOpen, AlertTriangle, Clock, TrendingUp, Activity, GitCompare } from 'lucide-react'
 import type { TestCase, TestSuite, User } from '../../types'
 import Badge from '../common/Badge'
 import type { Priority, TestStatus } from '../../types'
@@ -34,6 +35,7 @@ function StatCard({ label, value, sub, icon: Icon, iconBg, iconColor }: StatCard
 }
 
 export default function Dashboard({ testCases, testSuites, users }: DashboardProps) {
+  const [comparisonSuiteId, setComparisonSuiteId] = useState('')
   const total = testCases.length
   const visibleSuites = testSuites.filter(s => !s.isHidden)
 
@@ -162,6 +164,92 @@ export default function Dashboard({ testCases, testSuites, users }: DashboardPro
           )}
         </div>
       </div>
+
+      {/* QA vs UAT vs BAT Comparison */}
+      {testCases.length > 0 && (
+        <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-4 flex-wrap">
+            <h2 className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 flex items-center gap-2">
+              <GitCompare className="w-4 h-4 text-zinc-400" />
+              QA vs UAT vs BAT Results
+            </h2>
+            <select
+              value={comparisonSuiteId}
+              onChange={e => setComparisonSuiteId(e.target.value)}
+              className="px-2 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">All Suites</option>
+              {visibleSuites.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+          </div>
+          <div className="overflow-x-auto">
+            {(() => {
+              const compareCases = comparisonSuiteId
+                ? testCases.filter(tc => tc.testSuiteId === comparisonSuiteId)
+                : testCases
+              const conflicts = compareCases.filter(tc =>
+                new Set([tc.qaStatus, tc.uatStatus, tc.batStatus]).size > 1 &&
+                !['Not Run', 'Untested'].includes(tc.qaStatus) &&
+                !['Not Run', 'Untested'].includes(tc.uatStatus) &&
+                !['Not Run', 'Untested'].includes(tc.batStatus)
+              )
+              return (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-zinc-200 dark:border-zinc-800">
+                      <th className="text-left px-5 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Test Case</th>
+                      <th className="text-left px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Suite</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-indigo-500 uppercase tracking-wide">QA</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-violet-500 uppercase tracking-wide">UAT</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-cyan-500 uppercase tracking-wide">BAT</th>
+                      <th className="text-center px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide">Conflict</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {compareCases.length === 0 ? (
+                      <tr><td colSpan={6} className="px-5 py-8 text-center text-xs text-zinc-500">No test cases found.</td></tr>
+                    ) : (
+                      compareCases.map(tc => {
+                        const statuses = [tc.qaStatus, tc.uatStatus, tc.batStatus]
+                        const executed = statuses.filter(s => s !== 'Not Run' && s !== 'Untested')
+                        const hasConflict = executed.length > 1 && new Set(executed).size > 1
+                        return (
+                          <tr key={tc.id} className={`border-b border-zinc-100 dark:border-zinc-800/60 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors ${hasConflict ? 'bg-amber-50/40 dark:bg-amber-900/10' : ''}`}>
+                            <td className="px-5 py-2.5">
+                              <span className="font-mono text-xs text-indigo-400 mr-2">{tc.testCaseId}</span>
+                              <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate max-w-[200px] inline-block align-middle">{tc.title}</span>
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-zinc-500 truncate max-w-[120px]">{suiteMap[tc.testSuiteId] ?? '—'}</td>
+                            <td className="px-4 py-2.5 text-center"><Badge variant="status" value={tc.qaStatus}>{tc.qaStatus}</Badge></td>
+                            <td className="px-4 py-2.5 text-center"><Badge variant="status" value={tc.uatStatus}>{tc.uatStatus}</Badge></td>
+                            <td className="px-4 py-2.5 text-center"><Badge variant="status" value={tc.batStatus}>{tc.batStatus}</Badge></td>
+                            <td className="px-4 py-2.5 text-center">
+                              {hasConflict && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                                  <AlertTriangle className="w-2.5 h-2.5" />Conflict
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                  {conflicts.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t border-zinc-200 dark:border-zinc-800">
+                        <td colSpan={6} className="px-5 py-2.5 text-xs text-amber-600 dark:text-amber-400">
+                          {conflicts.length} test case{conflicts.length !== 1 ? 's' : ''} have conflicting QA/UAT/BAT results
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              )
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Suite Summary Table */}
       {visibleSuites.length > 0 && (

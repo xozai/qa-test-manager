@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown, GitBranch, CornerDownRight, Link, Unlink, Lock, Search, X, AlertTriangle } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, GitBranch, CornerDownRight, Link, Unlink, Lock, Search, X, AlertTriangle, Sparkles, RefreshCw, Check } from 'lucide-react'
 import Modal from '../common/Modal'
 import type { TestCase, TestStep, TestSuite, Priority, TestStatus, AttributeDef, InheritanceConfig } from '../../types'
+import { useEdgeCaseSuggestions } from '../../hooks/useAIAgent'
 
 interface TestCaseModalProps {
   isOpen: boolean
@@ -86,6 +87,7 @@ export default function TestCaseModal({
   testCase, testSuites, allTestCases, existingIds,
 }: TestCaseModalProps) {
   const isEdit = !!testCase
+  const edgeCases = useEdgeCaseSuggestions()
 
   const [activeTab, setActiveTab] = useState<Tab>('details')
   const [testCaseId, setTestCaseId] = useState('')
@@ -429,9 +431,22 @@ export default function TestCaseModal({
                 {inh?.inheritSteps && parentTc && <InheritedBadge parentTitle={parentTc.title} />}
               </label>
               {!inh?.inheritSteps && (
-                <button onClick={addStep} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors">
-                  <Plus className="w-3.5 h-3.5" />Add Step
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => edgeCases.suggest(title, description, steps)}
+                    disabled={edgeCases.loading || !title.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 bg-violet-500/10 hover:bg-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+                    title="Ask AI to suggest edge case steps"
+                  >
+                    {edgeCases.loading
+                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      : <Sparkles className="w-3.5 h-3.5" />}
+                    {edgeCases.loading ? 'Suggesting…' : 'Suggest Edge Cases'}
+                  </button>
+                  <button onClick={addStep} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-500 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors">
+                    <Plus className="w-3.5 h-3.5" />Add Step
+                  </button>
+                </div>
               )}
             </div>
             {inh?.inheritSteps && (
@@ -466,6 +481,57 @@ export default function TestCaseModal({
                 </div>
               ))}
             </div>
+
+            {/* AI Edge Case Suggestions */}
+            {edgeCases.error && (
+              <p className="mt-3 text-xs text-red-500 dark:text-red-400">{edgeCases.error}</p>
+            )}
+            {edgeCases.suggestions.length > 0 && (
+              <div className="mt-4 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-medium text-violet-600 dark:text-violet-400 flex items-center gap-1.5">
+                    <Sparkles className="w-3 h-3" />
+                    AI Suggested Edge Cases ({edgeCases.suggestions.length})
+                  </p>
+                  <button onClick={edgeCases.clearSuggestions} className="text-[10px] text-violet-500 hover:text-violet-400">Dismiss</button>
+                </div>
+                <div className="space-y-2">
+                  {edgeCases.suggestions.map((s, i) => (
+                    <div key={i} className="flex items-start gap-2 p-2 rounded bg-white dark:bg-zinc-800 border border-violet-200 dark:border-violet-700/40">
+                      <div className="flex-1 grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <p className="text-zinc-400 mb-0.5">Action</p>
+                          <p className="text-zinc-700 dark:text-zinc-300">{s.action}</p>
+                        </div>
+                        <div>
+                          <p className="text-zinc-400 mb-0.5">Expected Result</p>
+                          <p className="text-zinc-700 dark:text-zinc-300">{s.expectedResult}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSteps(prev => [...prev, { action: s.action, expectedResult: s.expectedResult }])
+                          edgeCases.clearSuggestions()
+                        }}
+                        title="Add this step"
+                        className="flex-shrink-0 p-1 rounded text-violet-500 hover:text-violet-400 hover:bg-violet-500/10 transition-colors"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => {
+                      setSteps(prev => [...prev, ...edgeCases.suggestions.map(s => ({ action: s.action, expectedResult: s.expectedResult }))])
+                      edgeCases.clearSuggestions()
+                    }}
+                    className="w-full mt-1 py-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 rounded-lg transition-colors"
+                  >
+                    Add All {edgeCases.suggestions.length} Steps
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

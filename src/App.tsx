@@ -13,7 +13,7 @@ import UserManagement from './components/users/UserManagement'
 import LoginPage from './components/auth/LoginPage'
 import AIAssistant from './components/ai/AIAssistant'
 import { FlaskConical } from 'lucide-react'
-import type { TestCase, TestSuite, UserRole } from './types'
+import type { TestCase, TestSuite, UserRole, TestStatus } from './types'
 
 // undefined = not yet checked; null = not logged in; Session = logged in
 type AuthState = Session | null | undefined
@@ -51,6 +51,18 @@ export default function App() {
     else             void store.addTestCase(tc)
     setTcModalOpen(false)
     setEditingCase(null)
+  }
+
+  function handleBulkDelete(ids: string[]) {
+    void store.bulkDeleteTestCases(ids)
+  }
+
+  function handleBulkUpdateStatus(ids: string[], field: 'qaStatus' | 'uatStatus' | 'batStatus', status: TestStatus) {
+    void store.bulkUpdateTestCases(ids, { [field]: status })
+  }
+
+  function handleBulkMove(ids: string[], suiteId: string) {
+    void store.bulkUpdateTestCases(ids, { testSuiteId: suiteId })
   }
 
   function handleDeleteCase(id: string) {
@@ -139,6 +151,9 @@ export default function App() {
               onDuplicate={(tc) => void store.copyTestCase(tc.id)}
               onImportCSV={() => {}}
               onExportCSV={() => {}}
+              onBulkDelete={handleBulkDelete}
+              onBulkUpdateStatus={handleBulkUpdateStatus}
+              onBulkMove={handleBulkMove}
             />
           )}
 

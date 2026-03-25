@@ -3,6 +3,8 @@ import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRigh
 import type { TestCase, TestSuite, User, SortConfig, Priority, TestStatus } from '../../types'
 import Badge from '../common/Badge'
 import ConfirmDialog from '../common/ConfirmDialog'
+import ImportCSVModal from './ImportCSVModal'
+import { exportTestCasesToCSV } from '../../utils/csv'
 
 interface TestCaseGridProps {
   testCases: TestCase[]
@@ -12,8 +14,7 @@ interface TestCaseGridProps {
   onEdit: (tc: TestCase) => void
   onDelete: (id: string) => void
   onDuplicate: (tc: TestCase) => void
-  onImportCSV: () => void
-  onExportCSV: () => void
+  onImportCSV: (cases: Omit<TestCase, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<void>
   onBulkDelete?: (ids: string[]) => void
   onBulkUpdateStatus?: (ids: string[], field: 'qaStatus' | 'uatStatus' | 'batStatus', status: TestStatus) => void
   onBulkMove?: (ids: string[], suiteId: string) => void
@@ -87,7 +88,7 @@ const EMPTY_FILTERS: Filters = {
 
 export default function TestCaseGrid({
   testCases, testSuites, users: _users,
-  onAdd, onEdit, onDelete, onDuplicate, onImportCSV, onExportCSV,
+  onAdd, onEdit, onDelete, onDuplicate, onImportCSV,
   onBulkDelete, onBulkUpdateStatus, onBulkMove,
 }: TestCaseGridProps) {
   const [sorts, setSorts] = useState<SortConfig[]>([])
@@ -103,6 +104,10 @@ export default function TestCaseGrid({
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
   const [bulkMoveTarget, setBulkMoveTarget] = useState('')
   const [showBulkStatusMenu, setShowBulkStatusMenu] = useState(false)
+
+  // Import / export state
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [showExportMenu, setShowExportMenu] = useState(false)
 
   const PILL_LIMIT = 7
   const visibleSuitesList = testSuites.filter(s => !s.isHidden)
@@ -259,19 +264,43 @@ export default function TestCaseGrid({
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={onImportCSV}
+              onClick={() => setShowImportModal(true)}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
             >
               <Upload className="w-4 h-4" />
               Import
             </button>
-            <button
-              onClick={onExportCSV}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
-            >
-              <Download className="w-4 h-4" />
-              Export
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(v => !v)}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-zinc-700 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
+              >
+                <Download className="w-4 h-4" />
+                Export
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {showExportMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-20 py-1 min-w-[180px]">
+                  <button
+                    onClick={() => { exportTestCasesToCSV(filtered, testSuites); setShowExportMenu(false) }}
+                    className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
+                  >
+                    Export All ({filtered.length})
+                  </button>
+                  <button
+                    onClick={() => {
+                      const selected = testCases.filter(tc => selectedIds.has(tc.id))
+                      exportTestCasesToCSV(selected, testSuites)
+                      setShowExportMenu(false)
+                    }}
+                    disabled={selectedCount === 0}
+                    className="w-full text-left px-3 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Export Selected ({selectedCount})
+                  </button>
+                </div>
+              )}
+            </div>
             <button
               onClick={onAdd}
               className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"
@@ -762,6 +791,19 @@ export default function TestCaseGrid({
         message={`Delete ${selectedCount} selected test case${selectedCount !== 1 ? 's' : ''}? This action cannot be undone.`}
         confirmLabel={`Delete ${selectedCount}`}
         danger
+      />
+
+      {/* Export menu click-outside overlay */}
+      {showExportMenu && (
+        <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+      )}
+
+      {/* Import modal */}
+      <ImportCSVModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={async (cases) => { await onImportCSV(cases); setShowImportModal(false) }}
+        testSuites={testSuites}
       />
     </div>
   )

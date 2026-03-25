@@ -65,6 +65,12 @@ export default function App() {
     void store.bulkUpdateTestCases(ids, { testSuiteId: suiteId })
   }
 
+  async function handleImportCSV(cases: Omit<TestCase, 'id' | 'createdAt' | 'updatedAt'>[]) {
+    for (const tc of cases) {
+      await store.addTestCase(tc)
+    }
+  }
+
   function handleDeleteCase(id: string) {
     const children = store.testCases.filter(t => t.parentId === id)
     if (children.length > 0) {
@@ -149,8 +155,7 @@ export default function App() {
               onEdit={handleEditCase}
               onDelete={handleDeleteCase}
               onDuplicate={(tc) => void store.copyTestCase(tc.id)}
-              onImportCSV={() => {}}
-              onExportCSV={() => {}}
+              onImportCSV={handleImportCSV}
               onBulkDelete={handleBulkDelete}
               onBulkUpdateStatus={handleBulkUpdateStatus}
               onBulkMove={handleBulkMove}

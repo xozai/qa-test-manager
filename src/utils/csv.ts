@@ -1,5 +1,5 @@
 import Papa from 'papaparse'
-import { TestCase, TestStep, Priority, TestStatus } from '../types'
+import { TestCase, TestStep, TestSuite, Priority, TestStatus } from '../types'
 
 const PRIORITY_VALUES: Priority[] = ['High', 'Med', 'Low']
 const STATUS_VALUES: TestStatus[] = ['Pass', 'Fail', 'Blocked', 'Skipped', 'Not Run']
@@ -12,11 +12,8 @@ function isValidStatus(value: string): value is TestStatus {
   return STATUS_VALUES.includes(value as TestStatus)
 }
 
-function encodeSteps(steps: TestStep[]): string {
-  return steps.map(s => `${s.action}|${s.expectedResult}`).join(';;')
-}
-
-function decodeSteps(raw: string): TestStep[] {
+/** Legacy decoder for old ;; encoded step exports — kept for backwards compatibility */
+function decodeStepsLegacy(raw: string): TestStep[] {
   if (!raw) return []
   return raw.split(';;').map(pair => {
     const idx = pair.indexOf('|')
@@ -39,32 +36,34 @@ export const CSV_HEADERS = [
   'uatStatus',
   'batStatus',
   'priority',
-  'testSuiteId',
+  'suiteName',
 ]
 
-export function exportTestCasesToCSV(testCases: TestCase[]): void {
+export function exportTestCasesToCSV(testCases: TestCase[], testSuites: TestSuite[]): void {
+  const suiteMap = Object.fromEntries(testSuites.map(s => [s.id, s.name]))
   const rows = testCases.map(tc => ({
     testCaseId: tc.testCaseId,
     title: tc.title,
     description: tc.description,
     preconditions: tc.preconditions,
     testData: tc.testData,
-    steps: encodeSteps(tc.steps),
+    steps: JSON.stringify(tc.steps),
     qaStatus: tc.qaStatus,
     uatStatus: tc.uatStatus,
     batStatus: tc.batStatus,
     priority: tc.priority,
-    testSuiteId: tc.testSuiteId,
+    suiteName: suiteMap[tc.testSuiteId] ?? '',
   }))
 
   const csv = Papa.unparse(rows, { columns: CSV_HEADERS })
   downloadCSV(csv, 'test-cases-export.csv')
 }
 
-export function downloadCSVTemplate(): void {
-  const sampleSteps = encodeSteps([
+export function downloadCSVTemplate(testSuites: TestSuite[]): void {
+  const suiteName = testSuites[0]?.name ?? 'My Suite Name'
+  const sampleSteps = JSON.stringify([
     { action: 'Navigate to the page', expectedResult: 'Page is displayed' },
-    { action: 'Perform action', expectedResult: 'Expected outcome occurs' },
+    { action: 'Perform the action', expectedResult: 'Expected outcome occurs' },
   ])
 
   const sample = [
@@ -79,7 +78,7 @@ export function downloadCSVTemplate(): void {
       uatStatus: 'Not Run',
       batStatus: 'Not Run',
       priority: 'Med',
-      testSuiteId: 'suite-1',
+      suiteName,
     },
   ]
 
@@ -92,7 +91,11 @@ export interface ImportResult {
   errors: { row: number; message: string }[]
 }
 
-export function importTestCasesFromCSV(file: File): Promise<ImportResult> {
+export function importTestCasesFromCSV(file: File, testSuites: TestSuite[]): Promise<ImportResult> {
+  const suiteNameMap = Object.fromEntries(
+    testSuites.map(s => [s.name.toLowerCase(), s.id])
+  )
+
   return new Promise(resolve => {
     Papa.parse<Record<string, string>>(file, {
       header: true,
@@ -132,18 +135,37 @@ export function importTestCasesFromCSV(file: File): Promise<ImportResult> {
             return
           }
 
+          // Resolve suite name → ID (support both new "suiteName" and old "testSuiteId" columns)
+          const rawSuiteName = (row.suiteName ?? row.testSuiteId ?? '').trim()
+          const testSuiteId = suiteNameMap[rawSuiteName.toLowerCase()] ?? ''
+          if (rawSuiteName && !testSuiteId) {
+            errors.push({ row: rowNum, message: `Suite "${rawSuiteName}" not found — row imported without a suite assignment` })
+          }
+
+          // Parse steps: JSON first, fall back to legacy ;; encoding
+          let steps: TestStep[] = []
+          const rawSteps = row.steps?.trim() || ''
+          if (rawSteps) {
+            try {
+              const parsed = JSON.parse(rawSteps)
+              steps = Array.isArray(parsed) ? parsed : []
+            } catch {
+              steps = decodeStepsLegacy(rawSteps)
+            }
+          }
+
           imported.push({
             testCaseId: row.testCaseId?.trim() || '',
             title: row.title.trim(),
             description: row.description?.trim() || '',
             preconditions: row.preconditions?.trim() || '',
             testData: row.testData?.trim() || '',
-            steps: decodeSteps(row.steps?.trim() || ''),
+            steps,
             qaStatus: qaStatus as TestStatus,
             uatStatus: uatStatus as TestStatus,
             batStatus: batStatus as TestStatus,
             priority: priority as Priority,
-            testSuiteId: row.testSuiteId?.trim() || '',
+            testSuiteId,
             attributeValues: {},
           })
         })

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { FlaskConical, FolderOpen, AlertTriangle, Clock, TrendingUp, Activity, GitCompare } from 'lucide-react'
-import type { TestCase, TestSuite, User } from '../../types'
+import { FlaskConical, FolderOpen, AlertTriangle, Clock, TrendingUp, Activity, GitCompare, Bug } from 'lucide-react'
+import type { TestCase, TestSuite, User, Defect } from '../../types'
 import Badge from '../common/Badge'
 import type { Priority, TestStatus } from '../../types'
 
@@ -8,6 +8,8 @@ interface DashboardProps {
   testCases: TestCase[]
   testSuites: TestSuite[]
   users: User[]
+  defects?: Defect[]
+  onNavigateToDefects?: () => void
 }
 
 interface StatCardProps {
@@ -34,7 +36,7 @@ function StatCard({ label, value, sub, icon: Icon, iconBg, iconColor }: StatCard
   )
 }
 
-export default function Dashboard({ testCases, testSuites, users }: DashboardProps) {
+export default function Dashboard({ testCases, testSuites, users, defects = [], onNavigateToDefects }: DashboardProps) {
   const [comparisonSuiteId, setComparisonSuiteId] = useState('')
   const total = testCases.length
   const visibleSuites = testSuites.filter(s => !s.isHidden)
@@ -66,7 +68,7 @@ export default function Dashboard({ testCases, testSuites, users }: DashboardPro
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
         <StatCard label="Total Test Cases" value={total} sub={`${ran.length} executed`}
           icon={FlaskConical} iconBg="bg-indigo-500/15" iconColor="text-indigo-400" />
         <StatCard label="Test Suites" value={visibleSuites.length} sub={`${testSuites.filter(s => s.isHidden).length} hidden`}
@@ -75,6 +77,19 @@ export default function Dashboard({ testCases, testSuites, users }: DashboardPro
           icon={TrendingUp} iconBg="bg-emerald-500/15" iconColor="text-emerald-400" />
         <StatCard label="Team Members" value={users.length} sub="active users"
           icon={Activity} iconBg="bg-cyan-500/15" iconColor="text-cyan-400" />
+        <div
+          onClick={onNavigateToDefects}
+          className={`bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl p-5 flex items-start gap-4 ${onNavigateToDefects ? 'cursor-pointer hover:border-red-300 dark:hover:border-red-800 transition-colors' : ''}`}
+        >
+          <div className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 bg-red-500/15">
+            <Bug className="w-5 h-5 text-red-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide">Open Defects</p>
+            <p className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 mt-0.5">{defects.filter(d => d.status === 'Open').length}</p>
+            <p className="text-xs text-zinc-500 mt-0.5">{defects.length} total logged</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { Plus, Trash2, ChevronUp, ChevronDown, GitBranch, CornerDownRight, Link, Unlink, Lock, Search, X, AlertTriangle, Sparkles, RefreshCw, Check } from 'lucide-react'
 import Modal from '../common/Modal'
-import type { TestCase, TestStep, TestSuite, Priority, TestStatus, AttributeDef, InheritanceConfig } from '../../types'
+import type { TestCase, TestStep, TestSuite, Priority, TestStatus, AttributeDef, InheritanceConfig, User, Comment, ActivityEvent } from '../../types'
 import { useEdgeCaseSuggestions } from '../../hooks/useAIAgent'
+import CommentsPanel from './CommentsPanel'
 
 interface TestCaseModalProps {
   isOpen: boolean
@@ -11,10 +12,13 @@ interface TestCaseModalProps {
   onLinkChild: (childId: string, parentId: string, config: Omit<InheritanceConfig, 'id' | 'childId' | 'parentId'>) => void
   onUpdateInheritance: (childId: string, config: Omit<InheritanceConfig, 'id' | 'childId' | 'parentId'>, parentId: string) => void
   onUnlinkChild: (childId: string) => void
+  onFetchComments?: (testCaseId: string) => Promise<{ comments: Comment[]; activity: ActivityEvent[] }>
+  onAddComment?: (testCaseId: string, body: string) => Promise<void>
   testCase?: TestCase | null
   testSuites: TestSuite[]
   allTestCases: TestCase[]
   existingIds: string[]
+  users?: User[]
 }
 
 function genId() {
@@ -33,7 +37,7 @@ const PRIORITIES: Priority[] = ['High', 'Med', 'Low']
 const STATUSES: TestStatus[] = ['Not Run', 'Pass', 'Fail', 'Blocked', 'Skipped']
 const EMPTY_STEP: TestStep = { action: '', expectedResult: '' }
 
-type Tab = 'details' | 'steps' | 'attributes' | 'relationships'
+type Tab = 'details' | 'steps' | 'attributes' | 'relationships' | 'comments'
 
 // ── InheritedBadge ────────────────────────────────────────────────────────────
 function InheritedBadge({ parentTitle }: { parentTitle: string }) {
@@ -84,7 +88,8 @@ function InheritanceConfigPanel({ config, onChange }: InheritancePanelProps) {
 export default function TestCaseModal({
   isOpen, onClose, onSave,
   onLinkChild, onUpdateInheritance, onUnlinkChild,
-  testCase, testSuites, allTestCases, existingIds,
+  onFetchComments, onAddComment,
+  testCase, testSuites, allTestCases, existingIds, users = [],
 }: TestCaseModalProps) {
   const isEdit = !!testCase
   const edgeCases = useEdgeCaseSuggestions()
@@ -296,6 +301,7 @@ export default function TestCaseModal({
     { id: 'steps',         label: `Steps (${steps.filter(s => s.action.trim()).length || steps.length})` },
     { id: 'attributes',    label: 'Attributes' },
     { id: 'relationships', label: children.length > 0 ? `Relationships (${children.length})` : inh ? 'Relationships ↑' : 'Relationships' },
+    ...(isEdit && onFetchComments ? [{ id: 'comments' as Tab, label: 'Comments & Activity' }] : []),
   ]
 
   return (
@@ -790,6 +796,18 @@ export default function TestCaseModal({
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── COMMENTS & ACTIVITY TAB ── */}
+        {activeTab === 'comments' && isEdit && testCase && onFetchComments && onAddComment && (
+          <div className="h-96 flex flex-col">
+            <CommentsPanel
+              testCaseId={testCase.id}
+              users={users}
+              onFetchComments={onFetchComments}
+              onAddComment={onAddComment}
+            />
           </div>
         )}
       </Modal>

@@ -10,87 +10,88 @@ import TestCaseModal from './components/testcases/TestCaseModal'
 import TestSuiteList from './components/testsuites/TestSuiteList'
 import TestRunner from './components/testrunner/TestRunner'
 import RunHistory from './components/testrunner/RunHistory'
+import DefectList from './components/defects/DefectList'
 import Settings from './components/settings/Settings'
 import UserManagement from './components/users/UserManagement'
 import LoginPage from './components/auth/LoginPage'
 import AIAssistant from './components/ai/AIAssistant'
-import { ToastProvider } from './components/common/Toast'
+import { ToastProvider, useToast } from './components/common/Toast'
 import { FlaskConical } from 'lucide-react'
 import type { TestCase, TestSuite, UserRole, TestStatus, TestRun } from './types'
 
-// undefined = not yet checked; null = not logged in; Session = logged in
 type AuthState = Session | null | undefined
 
-export default function App() {
-  const [session, setSession] = useState<AuthState>(undefined)
+// ── Inner app (inside ToastProvider so useToast works) ────────────────────────
+function AppContent({ session }: { session: Session }) {
   const store = useTestStore()
   const [currentView, setCurrentView] = useState<View>('dashboard')
   const { theme, toggleTheme } = useTheme()
+  const { toast } = useToast()
 
-  // Test Case modal state
   const [tcModalOpen, setTcModalOpen] = useState(false)
   const [editingCase, setEditingCase] = useState<TestCase | null>(null)
+  const [rerunFrom, setRerunFrom] = useState<TestRun | null>(null)
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s))
-    return () => subscription.unsubscribe()
-  }, [])
-
-  // ── Current user + role ────────────────────────────────────────────────────
-  const currentUser = store.users.find(u => u.email === session?.user?.email) ?? null
+  const currentUser = store.users.find(u => u.email === session.user.email) ?? null
   const isBSA = currentUser?.roles.includes('BSA') ?? false
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
-  function handleAddCase() {
-    setEditingCase(null)
-    setTcModalOpen(true)
-  }
+  // ── Handlers ────────────────────────────────────────────────────────────────
+  function handleAddCase() { setEditingCase(null); setTcModalOpen(true) }
+  function handleEditCase(tc: TestCase) { setEditingCase(tc); setTcModalOpen(true) }
 
-  function handleEditCase(tc: TestCase) {
-    setEditingCase(tc)
-    setTcModalOpen(true)
-  }
-
-  function handleSaveCase(tc: TestCase, _propagate: boolean) {
-    if (editingCase) void store.updateTestCase(editingCase.id, tc)
-    else             void store.addTestCase(tc)
+  async function handleSaveCase(tc: TestCase, _propagate: boolean) {
+    try {
+      if (editingCase) await store.updateTestCase(editingCase.id, tc)
+      else             await store.addTestCase(tc)
+      toast(editingCase ? 'Test case updated' : 'Test case created', 'success')
+    } catch { toast('Failed to save test case', 'error') }
     setTcModalOpen(false)
     setEditingCase(null)
   }
 
-  function handleBulkDelete(ids: string[]) {
-    void store.bulkDeleteTestCases(ids)
-  }
-
-  function handleBulkUpdateStatus(ids: string[], field: 'qaStatus' | 'uatStatus' | 'batStatus', status: TestStatus) {
-    void store.bulkUpdateTestCases(ids, { [field]: status })
-  }
-
-  function handleBulkMove(ids: string[], suiteId: string) {
-    void store.bulkUpdateTestCases(ids, { testSuiteId: suiteId })
-  }
-
-  async function handleImportCSV(cases: Omit<TestCase, 'id' | 'createdAt' | 'updatedAt'>[]) {
-    for (const tc of cases) {
-      await store.addTestCase(tc)
-    }
-  }
-
-  function handleDeleteCase(id: string) {
+  async function handleDeleteCase(id: string) {
     const children = store.testCases.filter(t => t.parentId === id)
     if (children.length > 0) {
       const names = children.slice(0, 3).map(c => c.testCaseId).join(', ')
       const extra = children.length > 3 ? ` + ${children.length - 3} more` : ''
-      if (!window.confirm(`This test case is a parent of ${children.length} child(ren): ${names}${extra}.\n\nDeleting it will unlink all children (they keep their current values). Continue?`)) return
+      if (!window.confirm(`This test case is a parent of ${children.length} child(ren): ${names}${extra}.\n\nDeleting it will unlink all children. Continue?`)) return
     }
-    void store.deleteTestCase(id)
+    try {
+      await store.deleteTestCase(id)
+      toast('Test case deleted', 'success')
+    } catch { toast('Failed to delete test case', 'error') }
   }
 
-  function handleSaveSuite(suite: TestSuite) {
-    if (store.testSuites.some(s => s.id === suite.id)) void store.updateTestSuite(suite.id, suite)
-    else                                                 void store.addTestSuite(suite)
+  async function handleBulkDelete(ids: string[]) {
+    try {
+      await store.bulkDeleteTestCases(ids)
+      toast(`${ids.length} test case${ids.length !== 1 ? 's' : ''} deleted`, 'success')
+    } catch { toast('Failed to delete test cases', 'error') }
+  }
+
+  function handleBulkUpdateStatus(ids: string[], field: 'qaStatus' | 'uatStatus' | 'batStatus', status: TestStatus) {
+    void store.bulkUpdateTestCases(ids, { [field]: status })
+    toast(`Updated ${ids.length} case${ids.length !== 1 ? 's' : ''}`, 'success')
+  }
+
+  function handleBulkMove(ids: string[], suiteId: string) {
+    void store.bulkUpdateTestCases(ids, { testSuiteId: suiteId })
+    toast(`Moved ${ids.length} case${ids.length !== 1 ? 's' : ''}`, 'success')
+  }
+
+  async function handleImportCSV(cases: Omit<TestCase, 'id' | 'createdAt' | 'updatedAt'>[]) {
+    try {
+      for (const tc of cases) await store.addTestCase(tc)
+      toast(`Imported ${cases.length} test case${cases.length !== 1 ? 's' : ''}`, 'success')
+    } catch { toast('Import failed', 'error') }
+  }
+
+  async function handleSaveSuite(suite: TestSuite) {
+    try {
+      if (store.testSuites.some(s => s.id === suite.id)) await store.updateTestSuite(suite.id, suite)
+      else                                                 await store.addTestSuite(suite)
+      toast('Suite saved', 'success')
+    } catch { toast('Failed to save suite', 'error') }
   }
 
   function handleSaveUser(user: { id: string; name: string; email: string; roles: UserRole[] }) {
@@ -104,37 +105,23 @@ export default function App() {
     const { data: { session: s } } = await supabase.auth.getSession()
     const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-user`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${s?.access_token ?? ''}`,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${s?.access_token ?? ''}` },
       body: JSON.stringify({ email, name, roles }),
     })
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({ error: 'Unknown error' }))
-      throw new Error((err as { error?: string }).error ?? 'Failed to invite user')
+      toast((err as { error?: string }).error ?? 'Failed to invite user', 'error')
+      throw new Error('invite failed')
     }
+    toast(`Invite sent to ${email}`, 'success')
   }
 
-  function handleRerunFailed(_run: TestRun) {
+  function handleRerunFailed(run: TestRun) {
+    setRerunFrom(run)
     setCurrentView('testrunner')
   }
 
-  // ── Auth loading ──────────────────────────────────────────────────────────
-  if (session === undefined) {
-    return (
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
-        <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
-  }
-
-  // ── Not authenticated ─────────────────────────────────────────────────────
-  if (session === null) {
-    return <LoginPage />
-  }
-
-  // ── Data loading ──────────────────────────────────────────────────────────
+  // ── Loading ──────────────────────────────────────────────────────────────────
   if (store.loading) {
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex flex-col items-center justify-center gap-4">
@@ -149,146 +136,195 @@ export default function App() {
     )
   }
 
-  // ── Main app ──────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+      <Sidebar
+        currentView={currentView}
+        onNavigate={setCurrentView}
+        testCaseCount={store.testCases.length}
+        testSuiteCount={store.testSuites.length}
+        defectCount={store.defects.filter(d => d.status === 'Open').length}
+        isBSA={isBSA}
+        onSignOut={() => supabase.auth.signOut()}
+        theme={theme}
+        onToggleTheme={toggleTheme}
+      />
+
+      <main className="pl-64 min-h-screen">
+        <div className="min-h-screen bg-zinc-100/50 dark:bg-zinc-900/50">
+
+          {currentView === 'dashboard' && (
+            <Dashboard
+              testCases={store.testCases}
+              testSuites={store.testSuites}
+              users={store.users}
+              defects={store.defects}
+              onNavigateToDefects={() => setCurrentView('defects')}
+            />
+          )}
+
+          {currentView === 'testcases' && (
+            <TestCaseGrid
+              testCases={store.testCases}
+              testSuites={store.testSuites}
+              users={store.users}
+              onAdd={handleAddCase}
+              onEdit={handleEditCase}
+              onDelete={handleDeleteCase}
+              onDuplicate={(tc) => {
+                void store.copyTestCase(tc.id)
+                toast('Test case duplicated', 'success')
+              }}
+              onImportCSV={handleImportCSV}
+              onBulkDelete={handleBulkDelete}
+              onBulkUpdateStatus={handleBulkUpdateStatus}
+              onBulkMove={handleBulkMove}
+              onUpdateStatus={(id, field, value) => {
+                void store.updateTestCase(id, { [field]: value })
+                toast('Status updated', 'success')
+              }}
+            />
+          )}
+
+          {currentView === 'testsuites' && (
+            <TestSuiteList
+              testSuites={store.testSuites}
+              testCases={store.testCases}
+              users={store.users}
+              onSave={handleSaveSuite}
+              onDelete={(id) => {
+                void store.deleteTestSuite(id)
+                toast('Suite deleted', 'success')
+              }}
+              onToggleHidden={(id) => {
+                const suite = store.testSuites.find(s => s.id === id)
+                if (suite) void store.updateTestSuite(id, { isHidden: !suite.isHidden })
+              }}
+            />
+          )}
+
+          {currentView === 'testrunner' && (
+            <TestRunner
+              testCases={store.testCases}
+              testSuites={store.testSuites}
+              users={store.users}
+              testRuns={store.testRuns}
+              defects={store.defects}
+              onUpdateTestCase={(id, changes) => void store.updateTestCase(id, changes)}
+              onCreateRun={store.createTestRun}
+              onUpsertRunResult={store.upsertRunResult}
+              onCompleteRun={store.completeTestRun}
+              onUploadAttachment={store.uploadRunAttachment}
+              onAddDefect={store.addDefect}
+              onRerunFailed={handleRerunFailed}
+              rerunFrom={rerunFrom}
+              onRerunFromConsumed={() => setRerunFrom(null)}
+            />
+          )}
+
+          {currentView === 'history' && (
+            <RunHistory
+              testRuns={store.testRuns}
+              testCases={store.testCases}
+              testSuites={store.testSuites}
+              users={store.users}
+              onDelete={async (id) => {
+                await store.deleteTestRun(id)
+                toast('Run deleted', 'success')
+              }}
+              onRerunFailed={handleRerunFailed}
+            />
+          )}
+
+          {currentView === 'defects' && (
+            <DefectList
+              defects={store.defects}
+              testCases={store.testCases}
+              users={store.users}
+              onUpdateDefect={store.updateDefect}
+              onDeleteDefect={store.deleteDefect}
+            />
+          )}
+
+          {currentView === 'users' && (
+            <UserManagement
+              users={store.users}
+              onSave={handleSaveUser}
+              onDelete={(id) => void store.deleteUser(id)}
+            />
+          )}
+
+          {currentView === 'ai' && (
+            <AIAssistant
+              testSuites={store.testSuites}
+              existingTestCaseIds={store.testCases.map(tc => tc.testCaseId)}
+              onImport={async (suite, cases) => {
+                const suiteId = await store.addTestSuite(suite)
+                if (!suiteId) return
+                for (const tc of cases) await store.addTestCase({ ...tc, testSuiteId: suiteId })
+                toast(`Imported ${cases.length} AI-generated cases`, 'success')
+              }}
+              onNavigate={(view) => setCurrentView(view)}
+            />
+          )}
+
+          {currentView === 'settings' && (
+            <Settings
+              currentUser={currentUser}
+              users={store.users}
+              onUpdateUser={store.updateUser}
+              onSetUserActive={store.setUserActive}
+              onInviteUser={handleInviteUser}
+              theme={theme}
+              onToggleTheme={toggleTheme}
+            />
+          )}
+
+        </div>
+      </main>
+
+      <TestCaseModal
+        isOpen={tcModalOpen}
+        onClose={() => { setTcModalOpen(false); setEditingCase(null) }}
+        onSave={handleSaveCase}
+        onLinkChild={(childId, parentId, cfg) => void store.linkChildToParent(childId, parentId, cfg)}
+        onUpdateInheritance={(childId, cfg, parentId) => void store.updateInheritance(childId, cfg, parentId)}
+        onUnlinkChild={(childId) => void store.unlinkChild(childId)}
+        testCase={editingCase}
+        testSuites={store.testSuites}
+        allTestCases={store.testCases}
+        existingIds={store.testCases.map(tc => tc.testCaseId)}
+        onFetchComments={store.fetchComments}
+        onAddComment={store.addComment}
+        users={store.users}
+      />
+    </div>
+  )
+}
+
+// ── Root component ─────────────────────────────────────────────────────────────
+export default function App() {
+  const [session, setSession] = useState<AuthState>(undefined)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => setSession(s))
+    return () => subscription.unsubscribe()
+  }, [])
+
+  if (session === undefined) {
+    return (
+      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  if (session === null) return <LoginPage />
+
   return (
     <ToastProvider>
-      <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-        <Sidebar
-          currentView={currentView}
-          onNavigate={setCurrentView}
-          testCaseCount={store.testCases.length}
-          testSuiteCount={store.testSuites.length}
-          isBSA={isBSA}
-          onSignOut={() => supabase.auth.signOut()}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-        />
-
-        <main className="pl-64 min-h-screen">
-          <div className="min-h-screen bg-zinc-100/50 dark:bg-zinc-900/50">
-
-            {currentView === 'dashboard' && (
-              <Dashboard
-                testCases={store.testCases}
-                testSuites={store.testSuites}
-                users={store.users}
-                defects={store.defects}
-                onNavigateToDefects={() => setCurrentView('testrunner')}
-              />
-            )}
-
-            {currentView === 'testcases' && (
-              <TestCaseGrid
-                testCases={store.testCases}
-                testSuites={store.testSuites}
-                users={store.users}
-                onAdd={handleAddCase}
-                onEdit={handleEditCase}
-                onDelete={handleDeleteCase}
-                onDuplicate={(tc) => void store.copyTestCase(tc.id)}
-                onImportCSV={handleImportCSV}
-                onBulkDelete={handleBulkDelete}
-                onBulkUpdateStatus={handleBulkUpdateStatus}
-                onBulkMove={handleBulkMove}
-              />
-            )}
-
-            {currentView === 'testsuites' && (
-              <TestSuiteList
-                testSuites={store.testSuites}
-                testCases={store.testCases}
-                users={store.users}
-                onSave={handleSaveSuite}
-                onDelete={(id) => void store.deleteTestSuite(id)}
-                onToggleHidden={(id) => {
-                  const suite = store.testSuites.find(s => s.id === id)
-                  if (suite) void store.updateTestSuite(id, { isHidden: !suite.isHidden })
-                }}
-              />
-            )}
-
-            {currentView === 'testrunner' && (
-              <TestRunner
-                testCases={store.testCases}
-                testSuites={store.testSuites}
-                users={store.users}
-                testRuns={store.testRuns}
-                defects={store.defects}
-                onUpdateTestCase={(id, changes) => void store.updateTestCase(id, changes)}
-                onCreateRun={store.createTestRun}
-                onUpsertRunResult={store.upsertRunResult}
-                onCompleteRun={store.completeTestRun}
-                onUploadAttachment={store.uploadRunAttachment}
-                onAddDefect={store.addDefect}
-                onRerunFailed={handleRerunFailed}
-              />
-            )}
-
-            {currentView === 'history' && (
-              <RunHistory
-                testRuns={store.testRuns}
-                testCases={store.testCases}
-                testSuites={store.testSuites}
-                users={store.users}
-                onDelete={store.deleteTestRun}
-                onRerunFailed={handleRerunFailed}
-              />
-            )}
-
-            {currentView === 'users' && (
-              <UserManagement
-                users={store.users}
-                onSave={handleSaveUser}
-                onDelete={(id) => void store.deleteUser(id)}
-              />
-            )}
-
-            {currentView === 'ai' && (
-              <AIAssistant
-                testSuites={store.testSuites}
-                existingTestCaseIds={store.testCases.map(tc => tc.testCaseId)}
-                onImport={async (suite, cases) => {
-                  const suiteId = await store.addTestSuite(suite)
-                  if (!suiteId) return
-                  for (const tc of cases) {
-                    await store.addTestCase({ ...tc, testSuiteId: suiteId })
-                  }
-                }}
-                onNavigate={(view) => setCurrentView(view)}
-              />
-            )}
-
-            {currentView === 'settings' && (
-              <Settings
-                currentUser={currentUser}
-                users={store.users}
-                onUpdateUser={store.updateUser}
-                onSetUserActive={store.setUserActive}
-                onInviteUser={handleInviteUser}
-                theme={theme}
-                onToggleTheme={toggleTheme}
-              />
-            )}
-
-          </div>
-        </main>
-
-        <TestCaseModal
-          isOpen={tcModalOpen}
-          onClose={() => { setTcModalOpen(false); setEditingCase(null) }}
-          onSave={handleSaveCase}
-          onLinkChild={(childId, parentId, cfg) => void store.linkChildToParent(childId, parentId, cfg)}
-          onUpdateInheritance={(childId, cfg, parentId) => void store.updateInheritance(childId, cfg, parentId)}
-          onUnlinkChild={(childId) => void store.unlinkChild(childId)}
-          testCase={editingCase}
-          testSuites={store.testSuites}
-          allTestCases={store.testCases}
-          existingIds={store.testCases.map(tc => tc.testCaseId)}
-          onFetchComments={store.fetchComments}
-          onAddComment={store.addComment}
-          users={store.users}
-        />
-      </div>
+      <AppContent session={session} />
     </ToastProvider>
   )
 }

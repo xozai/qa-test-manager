@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   Play, ChevronLeft, ChevronRight, CheckCircle2, XCircle,
   Download, Eye, ChevronUp, ChevronDown, ChevronsUpDown,
@@ -33,6 +33,8 @@ interface TestRunnerProps {
   onUploadAttachment: (runId: string, tcId: string, file: File) => Promise<string>
   onAddDefect: (defect: Omit<Defect, 'id' | 'createdAt' | 'reporterId'>) => Promise<void>
   onRerunFailed?: (run: TestRun) => void
+  rerunFrom?: TestRun | null
+  onRerunFromConsumed?: () => void
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -586,6 +588,7 @@ export default function TestRunner({
   testSuites, testCases, users, testRuns,
   onUpdateTestCase, onCreateRun, onUpsertRunResult, onCompleteRun,
   onUploadAttachment, onAddDefect, onRerunFailed,
+  rerunFrom, onRerunFromConsumed,
 }: TestRunnerProps) {
   const [step, setStep] = useState<Step>('suites')
   const [selectedSuiteIds, setSelectedSuiteIds] = useState<string[]>([])
@@ -598,6 +601,23 @@ export default function TestRunner({
   const [startingRun, setStartingRun] = useState(false)
   const [finishingRun, setFinishingRun] = useState(false)
   const [logDefectCase, setLogDefectCase] = useState<TestCase | null>(null)
+  const [failedCaseIds, setFailedCaseIds] = useState<Set<string> | null>(null)
+
+  // Pre-seed wizard from a completed run's failed cases
+  useEffect(() => {
+    if (!rerunFrom) return
+    const failedIds = new Set(
+      rerunFrom.results
+        .filter(r => r.status === 'Fail' || r.status === 'Blocked')
+        .map(r => r.testCaseId)
+    )
+    setSelectedSuiteIds(rerunFrom.suiteIds)
+    setExecutorId(rerunFrom.executorId)
+    setTesterRole(rerunFrom.testerRole)
+    setFailedCaseIds(failedIds.size > 0 ? failedIds : null)
+    setStep('grid')
+    onRerunFromConsumed?.()
+  }, [rerunFrom]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Templates
   const [templates, setTemplates] = useState<RunTemplate[]>(loadTemplates)
@@ -655,8 +675,11 @@ export default function TestRunner({
   }, [testSuites, selectedSuiteIds])
 
   const selectedCases = useMemo(
-    () => testCases.filter(tc => selectedSuiteIds.includes(tc.testSuiteId)),
-    [testCases, selectedSuiteIds]
+    () => {
+      const inSuites = testCases.filter(tc => selectedSuiteIds.includes(tc.testSuiteId))
+      return failedCaseIds ? inSuites.filter(tc => failedCaseIds.has(tc.id)) : inSuites
+    },
+    [testCases, selectedSuiteIds, failedCaseIds]
   )
 
   const sortedCases = useMemo(() => {
@@ -1019,6 +1042,21 @@ export default function TestRunner({
       {/* ── Step 3: Grid ────────────────────────────────────────────────────── */}
       {step === 'grid' && (
         <div className="space-y-4">
+          {/* Rerun-failed filter banner */}
+          {failedCaseIds && (
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl">
+              <RotateCcw className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              <p className="text-sm text-amber-800 dark:text-amber-300 flex-1">
+                Showing {failedCaseIds.size} failed/blocked case{failedCaseIds.size !== 1 ? 's' : ''} from previous run
+              </p>
+              <button
+                onClick={() => setFailedCaseIds(null)}
+                className="text-xs text-amber-600 dark:text-amber-400 hover:underline"
+              >
+                Show all
+              </button>
+            </div>
+          )}
           {/* Toolbar */}
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3">

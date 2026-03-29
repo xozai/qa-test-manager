@@ -1,7 +1,7 @@
-import { LayoutDashboard, FlaskConical, FolderOpen, Play, Users, ChevronRight, LogOut, Sun, Moon, Sparkles, History, Settings } from 'lucide-react'
+import { LayoutDashboard, FlaskConical, FolderOpen, Play, Users, ChevronRight, LogOut, Sun, Moon, Sparkles, History, Settings, Bug } from 'lucide-react'
 import { cn } from '../../utils/cn'
 
-export type View = 'dashboard' | 'testcases' | 'testsuites' | 'testrunner' | 'history' | 'users' | 'ai' | 'settings'
+export type View = 'dashboard' | 'testcases' | 'testsuites' | 'testrunner' | 'history' | 'defects' | 'users' | 'ai' | 'settings'
 
 interface NavItem {
   id: View
@@ -15,6 +15,7 @@ interface SidebarProps {
   onNavigate: (view: View) => void
   testCaseCount: number
   testSuiteCount: number
+  defectCount?: number
   isBSA?: boolean
   onSignOut?: () => void
   theme?: 'light' | 'dark'
@@ -27,16 +28,18 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'testsuites', label: 'Test Suites',   icon: FolderOpen },
   { id: 'testrunner', label: 'Test Runner',   icon: Play },
   { id: 'history',    label: 'Run History',   icon: History },
+  { id: 'defects',    label: 'Defects',       icon: Bug },
   { id: 'users',      label: 'Users',         icon: Users },
   { id: 'ai',         label: 'AI Assistant',  icon: Sparkles },
 ]
 
 export default function Sidebar({
-  currentView, onNavigate, testCaseCount, testSuiteCount, isBSA, onSignOut, theme, onToggleTheme,
+  currentView, onNavigate, testCaseCount, testSuiteCount, defectCount, isBSA, onSignOut, theme, onToggleTheme,
 }: SidebarProps) {
   const getBadge = (id: View) => {
     if (id === 'testcases')  return testCaseCount
     if (id === 'testsuites') return testSuiteCount
+    if (id === 'defects')    return defectCount
     return undefined
   }
 

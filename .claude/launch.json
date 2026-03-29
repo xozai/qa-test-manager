@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "qa-test-manager",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--", "--port", "5180"],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5180"],
       "port": 5180,
       "autoPort": false
     }

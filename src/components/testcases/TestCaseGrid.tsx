@@ -1,10 +1,11 @@
-import { useState, useMemo, useCallback } from 'react'
-import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download, GitBranch, CornerDownRight, CheckSquare } from 'lucide-react'
+import { useState, useMemo, useCallback, useRef } from 'react'
+import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download, GitBranch, CornerDownRight, CheckSquare, Bookmark, BookmarkCheck } from 'lucide-react'
 import type { TestCase, TestSuite, User, SortConfig, Priority, TestStatus } from '../../types'
 import Badge from '../common/Badge'
 import ConfirmDialog from '../common/ConfirmDialog'
 import ImportCSVModal from './ImportCSVModal'
 import { exportTestCasesToCSV } from '../../utils/csv'
+import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts'
 
 interface TestCaseGridProps {
   testCases: TestCase[]
@@ -18,6 +19,7 @@ interface TestCaseGridProps {
   onBulkDelete?: (ids: string[]) => void
   onBulkUpdateStatus?: (ids: string[], field: 'qaStatus' | 'uatStatus' | 'batStatus', status: TestStatus) => void
   onBulkMove?: (ids: string[], suiteId: string) => void
+  onUpdateStatus?: (id: string, field: 'qaStatus' | 'uatStatus' | 'batStatus', value: TestStatus) => void
 }
 
 type ColumnKey = keyof TestCase
@@ -50,6 +52,52 @@ function allParent(tc: TestCase, all: TestCase[]): string {
 
 const PRIORITY_RANK: Record<string, number> = { High: 3, Med: 2, Low: 1 }
 const STATUS_RANK: Record<string, number> = { Fail: 5, Blocked: 4, Skipped: 3, 'Not Run': 2, Pass: 1, Untested: 0 }
+
+// ── Filter presets ────────────────────────────────────────────────────────────
+const PRESETS_KEY = 'qa-tc-filter-presets'
+interface FilterPreset { id: string; name: string; filters: Filters; search: string }
+function loadPresets(): FilterPreset[] {
+  try { return JSON.parse(localStorage.getItem(PRESETS_KEY) ?? '[]') as FilterPreset[] } catch { return [] }
+}
+function savePresetsToStorage(p: FilterPreset[]) { localStorage.setItem(PRESETS_KEY, JSON.stringify(p)) }
+
+// ── Inline status picker ──────────────────────────────────────────────────────
+const ALL_STATUSES: TestStatus[] = ['Untested', 'Pass', 'Fail', 'Blocked', 'Skipped', 'Not Run']
+const STATUS_PICK_STYLE: Record<TestStatus, string> = {
+  Pass:     'hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400',
+  Fail:     'hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400',
+  Blocked:  'hover:bg-orange-500/10 hover:text-orange-500 dark:hover:text-orange-400',
+  Skipped:  'hover:bg-zinc-500/10 hover:text-zinc-600 dark:hover:text-zinc-300',
+  'Not Run':'hover:bg-zinc-500/10 hover:text-zinc-600 dark:hover:text-zinc-300',
+  Untested: 'hover:bg-zinc-500/10 hover:text-zinc-600 dark:hover:text-zinc-300',
+}
+
+function StatusPicker({ current, onSelect, onClose }: {
+  current: TestStatus
+  onSelect: (s: TestStatus) => void
+  onClose: () => void
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-30" onClick={onClose} />
+      <div className="absolute z-40 top-full mt-1 left-0 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl py-1 min-w-[120px]">
+        {ALL_STATUSES.map(s => (
+          <button
+            key={s}
+            onClick={() => { onSelect(s); onClose() }}
+            className={`w-full text-left px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-2 ${
+              s === current ? 'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20' : `text-zinc-700 dark:text-zinc-300 ${STATUS_PICK_STYLE[s]}`
+            }`}
+          >
+            {s === current && <span className="w-1 h-1 rounded-full bg-indigo-500 flex-shrink-0" />}
+            {s !== current && <span className="w-1 h-1 flex-shrink-0" />}
+            {s}
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
 
 function SortIcon({ col, sorts }: { col: ColumnKey; sorts: SortConfig[] }) {
   const cfg = sorts.find(s => s.key === col)
@@ -89,7 +137,7 @@ const EMPTY_FILTERS: Filters = {
 export default function TestCaseGrid({
   testCases, testSuites, users: _users,
   onAdd, onEdit, onDelete, onDuplicate, onImportCSV,
-  onBulkDelete, onBulkUpdateStatus, onBulkMove,
+  onBulkDelete, onBulkUpdateStatus, onBulkMove, onUpdateStatus,
 }: TestCaseGridProps) {
   const [sorts, setSorts] = useState<SortConfig[]>([])
   const [search, setSearch] = useState('')
@@ -108,6 +156,24 @@ export default function TestCaseGrid({
   // Import / export state
   const [showImportModal, setShowImportModal] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
+
+  // Inline status picker state: `${tcId}-${field}`
+  const [statusPickerId, setStatusPickerId] = useState<string | null>(null)
+
+  // Filter presets
+  const [presets, setPresets] = useState<FilterPreset[]>(loadPresets)
+  const [showPresetMenu, setShowPresetMenu] = useState(false)
+  const [presetName, setPresetName] = useState('')
+  const [showSavePreset, setShowSavePreset] = useState(false)
+
+  // Refs for keyboard shortcuts
+  const searchRef = useRef<HTMLInputElement>(null)
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts([
+    { key: 'n', description: 'New test case', handler: onAdd },
+    { key: '/', description: 'Focus search', handler: () => { searchRef.current?.focus(); searchRef.current?.select() } },
+  ])
 
   const PILL_LIMIT = 7
   const visibleSuitesList = testSuites.filter(s => !s.isHidden)
@@ -196,6 +262,28 @@ export default function TestCaseGrid({
   const clearFilters = () => {
     setFilters(EMPTY_FILTERS)
     setSearch('')
+  }
+
+  function handleSavePreset() {
+    if (!presetName.trim()) return
+    const p: FilterPreset = { id: Date.now().toString(36), name: presetName.trim(), filters, search }
+    const updated = [...presets, p]
+    setPresets(updated)
+    savePresetsToStorage(updated)
+    setPresetName('')
+    setShowSavePreset(false)
+  }
+
+  function handleLoadPreset(p: FilterPreset) {
+    setFilters(p.filters)
+    setSearch(p.search)
+    setShowPresetMenu(false)
+  }
+
+  function handleDeletePreset(id: string) {
+    const updated = presets.filter(p => p.id !== id)
+    setPresets(updated)
+    savePresetsToStorage(updated)
   }
 
   // ── Bulk selection helpers ────────────────────────────────────────────────
@@ -315,8 +403,9 @@ export default function TestCaseGrid({
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
             <input
+              ref={searchRef}
               type="text"
-              placeholder="Search ID, title, description…"
+              placeholder="Search ID, title, description… (/)"
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-900 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-indigo-500"
@@ -355,7 +444,68 @@ export default function TestCaseGrid({
               Clear sort
             </button>
           )}
+
+          {/* Filter presets */}
+          <div className="relative ml-auto flex items-center gap-1.5">
+            <button
+              onClick={() => setShowSavePreset(v => !v)}
+              title="Save current filters as preset"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
+            >
+              <Bookmark className="w-3.5 h-3.5" />
+            </button>
+            {presets.length > 0 && (
+              <button
+                onClick={() => setShowPresetMenu(v => !v)}
+                title="Load preset"
+                className="p-1.5 rounded-lg text-zinc-400 hover:text-indigo-500 hover:bg-indigo-500/10 transition-colors"
+              >
+                <BookmarkCheck className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {showPresetMenu && presets.length > 0 && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowPresetMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg z-20 py-1 min-w-[180px]">
+                  <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase tracking-wide">Saved Presets</p>
+                  {presets.map(p => (
+                    <div key={p.id} className="flex items-center group/p hover:bg-zinc-50 dark:hover:bg-zinc-700/60">
+                      <button
+                        onClick={() => handleLoadPreset(p)}
+                        className="flex-1 text-left px-3 py-1.5 text-xs text-zinc-700 dark:text-zinc-300"
+                      >
+                        {p.name}
+                      </button>
+                      <button
+                        onClick={() => handleDeletePreset(p.id)}
+                        className="px-2 py-1.5 text-zinc-300 hover:text-red-400 opacity-0 group-hover/p:opacity-100 transition-all"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
+
+        {showSavePreset && (
+          <div className="flex items-center gap-2 p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+            <Bookmark className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+            <input
+              type="text"
+              placeholder="Preset name…"
+              value={presetName}
+              onChange={e => setPresetName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') handleSavePreset(); if (e.key === 'Escape') setShowSavePreset(false) }}
+              autoFocus
+              className="flex-1 px-2 py-1 text-xs bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-md text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            />
+            <button onClick={handleSavePreset} disabled={!presetName.trim()} className="px-2.5 py-1 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 rounded-md transition-colors">Save</button>
+            <button onClick={() => setShowSavePreset(false)} className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"><X className="w-3.5 h-3.5" /></button>
+          </div>
+        )}
 
         {showFilters && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -600,15 +750,30 @@ export default function TestCaseGrid({
                     <td className="px-4 py-3">
                       <Badge variant="priority" value={tc.priority}>{tc.priority}</Badge>
                     </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="status" value={tc.qaStatus}>{tc.qaStatus}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="status" value={tc.uatStatus}>{tc.uatStatus}</Badge>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge variant="status" value={tc.batStatus}>{tc.batStatus}</Badge>
-                    </td>
+                    {(['qaStatus', 'uatStatus', 'batStatus'] as const).map(field => {
+                      const pickerId = `${tc.id}-${field}`
+                      const isOpen = statusPickerId === pickerId
+                      return (
+                        <td key={field} className="px-4 py-3">
+                          <div className="relative inline-block">
+                            <button
+                              onClick={() => onUpdateStatus && setStatusPickerId(isOpen ? null : pickerId)}
+                              className={onUpdateStatus ? 'cursor-pointer hover:opacity-80 transition-opacity' : 'cursor-default'}
+                              title={onUpdateStatus ? `Click to change ${field.replace('Status', '')} status` : undefined}
+                            >
+                              <Badge variant="status" value={tc[field]}>{tc[field]}</Badge>
+                            </button>
+                            {isOpen && onUpdateStatus && (
+                              <StatusPicker
+                                current={tc[field]}
+                                onSelect={(s) => onUpdateStatus(tc.id, field, s)}
+                                onClose={() => setStatusPickerId(null)}
+                              />
+                            )}
+                          </div>
+                        </td>
+                      )
+                    })}
                     <td className="px-4 py-3">
                       <span className="text-xs text-zinc-500">
                         {tc.updatedAt ? new Date(tc.updatedAt).toLocaleDateString() : '—'}

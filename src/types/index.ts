@@ -12,6 +12,7 @@ export interface User {
   name: string
   email: string
   roles: UserRole[]
+  isActive?: boolean
 }
 
 export interface AttributeDef {
@@ -76,10 +77,16 @@ export interface SortConfig {
   priority: number
 }
 
+export interface RunAttachment {
+  name: string
+  url: string
+}
+
 export interface RunResult {
   testCaseId: string
   status: TestStatus
   notes: string
+  attachments?: RunAttachment[]
 }
 
 export interface TestRun {
@@ -88,6 +95,42 @@ export interface TestRun {
   suiteIds: string[]
   executorId: string
   testerRole: TesterRole
+  status: 'in_progress' | 'completed'
   results: RunResult[]
+  createdAt: string
+  completedAt?: string
+}
+
+export type DefectSeverity = 'Critical' | 'High' | 'Med' | 'Low'
+export type DefectStatus = 'Open' | 'Fixed' | 'Closed'
+
+export interface Defect {
+  id: string
+  runResultId?: string | null
+  testCaseId: string
+  title: string
+  severity: DefectSeverity
+  description: string
+  reporterId?: string | null
+  status: DefectStatus
+  createdAt: string
+}
+
+export interface Comment {
+  id: string
+  testCaseId: string
+  authorId?: string | null
+  body: string
+  createdAt: string
+}
+
+export type ActivityAction = 'created' | 'edited' | 'status_changed' | 'moved' | 'duplicated'
+
+export interface ActivityEvent {
+  id: string
+  testCaseId: string
+  actorId?: string | null
+  action: ActivityAction
+  metadata: Record<string, unknown>
   createdAt: string
 }

@@ -3,10 +3,12 @@ import {
   Play, ChevronLeft, ChevronRight, CheckCircle2, XCircle,
   Download, Eye, ChevronUp, ChevronDown, ChevronsUpDown,
   FolderOpen, User as UserIcon, BookmarkPlus, BookOpen, Trash2, Paperclip, X,
+  Bug, Flag, Loader2, RotateCcw,
 } from 'lucide-react'
 import Papa from 'papaparse'
-import type { TestCase, TestSuite, User, TesterRole, TestStatus, AttributeDef } from '../../types'
+import type { TestCase, TestSuite, User, TesterRole, TestStatus, AttributeDef, TestRun, Defect, RunAttachment } from '../../types'
 import Badge from '../common/Badge'
+import LogDefectModal from './LogDefectModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -22,7 +24,15 @@ interface TestRunnerProps {
   testSuites: TestSuite[]
   testCases: TestCase[]
   users: User[]
+  testRuns: TestRun[]
+  defects: Defect[]
   onUpdateTestCase: (id: string, changes: Partial<TestCase>) => void
+  onCreateRun: (opts: { name: string; suiteIds: string[]; executorId: string; testerRole: TesterRole }) => Promise<TestRun>
+  onUpsertRunResult: (runId: string, result: { testCaseId: string; status: TestStatus; notes: string; attachments?: RunAttachment[] }) => Promise<void>
+  onCompleteRun: (runId: string) => Promise<void>
+  onUploadAttachment: (runId: string, tcId: string, file: File) => Promise<string>
+  onAddDefect: (defect: Omit<Defect, 'id' | 'createdAt' | 'reporterId'>) => Promise<void>
+  onRerunFailed?: (run: TestRun) => void
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -263,27 +273,55 @@ const CALC_STATUS_STYLE: Record<string, string> = {
   'In Progress':'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/30',
 }
 
-function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
+function CaseExecution({ tc, suite, testerRole, runId, onBack, onSave, onUploadAttachment }: {
   tc: TestCase
   suite: TestSuite | undefined
   testerRole: TesterRole
+  runId: string | null
   onBack: () => void
-  onSave: (status: TestStatus) => void
+  onSave: (status: TestStatus, attachments: RunAttachment[]) => void
+  onUploadAttachment: (runId: string, tcId: string, file: File) => Promise<string>
 }) {
   const [stepResults, setStepResults] = useState<Record<number, 'Pass' | 'Fail'>>({})
   const [overrideStatus, setOverrideStatus] = useState<TestStatus | null>(null)
-  // Attachments: stepIndex → array of { name, url, type }
-  const [attachments, setAttachments] = useState<Record<number, { name: string; url: string; type: string }[]>>({})
+  const [attachments, setAttachments] = useState<Record<number, { name: string; url: string; type: string; uploading?: boolean }[]>>({})
   const suiteAttrs = suite?.attributes ?? []
   const hasSteps = tc.steps.length > 0
 
-  function handleAttachFile(stepIdx: number, file: File) {
-    // Create a local object URL for in-session preview (not persisted to DB)
-    const url = URL.createObjectURL(file)
-    setAttachments(prev => ({
-      ...prev,
-      [stepIdx]: [...(prev[stepIdx] ?? []), { name: file.name, url, type: file.type }],
-    }))
+  async function handleAttachFile(stepIdx: number, file: File) {
+    if (runId) {
+      // Show optimistic entry while uploading
+      const tempUrl = URL.createObjectURL(file)
+      setAttachments(prev => ({
+        ...prev,
+        [stepIdx]: [...(prev[stepIdx] ?? []), { name: file.name, url: tempUrl, type: file.type, uploading: true }],
+      }))
+      try {
+        const persistedUrl = await onUploadAttachment(runId, tc.id, file)
+        setAttachments(prev => {
+          const updated = (prev[stepIdx] ?? []).map(a =>
+            a.url === tempUrl ? { ...a, url: persistedUrl, uploading: false } : a
+          )
+          return { ...prev, [stepIdx]: updated }
+        })
+      } catch {
+        // Keep local blob URL on error
+        setAttachments(prev => ({
+          ...prev,
+          [stepIdx]: (prev[stepIdx] ?? []).map(a => a.url === tempUrl ? { ...a, uploading: false } : a),
+        }))
+      }
+    } else {
+      const url = URL.createObjectURL(file)
+      setAttachments(prev => ({
+        ...prev,
+        [stepIdx]: [...(prev[stepIdx] ?? []), { name: file.name, url, type: file.type }],
+      }))
+    }
+  }
+
+  function allAttachments(): RunAttachment[] {
+    return Object.values(attachments).flat().map(a => ({ name: a.name, url: a.url }))
   }
 
   function removeAttachment(stepIdx: number, attachIdx: number) {
@@ -510,7 +548,7 @@ function CaseExecution({ tc, suite, testerRole, onBack, onSave }: {
           Cancel
         </button>
         <button
-          onClick={() => effectiveStatus && onSave(effectiveStatus)}
+          onClick={() => effectiveStatus && onSave(effectiveStatus, allAttachments())}
           disabled={!canSave}
           className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
         >
@@ -544,7 +582,11 @@ function saveTemplates(templates: RunTemplate[]) {
 
 // ── Main TestRunner ────────────────────────────────────────────────────────────
 
-export default function TestRunner({ testSuites, testCases, users, onUpdateTestCase }: TestRunnerProps) {
+export default function TestRunner({
+  testSuites, testCases, users, testRuns,
+  onUpdateTestCase, onCreateRun, onUpsertRunResult, onCompleteRun,
+  onUploadAttachment, onAddDefect, onRerunFailed,
+}: TestRunnerProps) {
   const [step, setStep] = useState<Step>('suites')
   const [selectedSuiteIds, setSelectedSuiteIds] = useState<string[]>([])
   const [executorId, setExecutorId] = useState<string>(users[0]?.id ?? '')
@@ -552,6 +594,10 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
   const [sorts, setSorts] = useState<RunnerSortConfig[]>([])
   const [viewingCase, setViewingCase] = useState<TestCase | null>(null)
   const [executingCase, setExecutingCase] = useState<TestCase | null>(null)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [startingRun, setStartingRun] = useState(false)
+  const [finishingRun, setFinishingRun] = useState(false)
+  const [logDefectCase, setLogDefectCase] = useState<TestCase | null>(null)
 
   // Templates
   const [templates, setTemplates] = useState<RunTemplate[]>(loadTemplates)
@@ -659,9 +705,17 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
     })
   }, [])
 
-  function handleSaveResult(status: TestStatus) {
+  async function handleSaveResult(status: TestStatus, attachments: RunAttachment[]) {
     if (!executingCase) return
     onUpdateTestCase(executingCase.id, { [getStatusField(testerRole)]: status, updatedAt: new Date().toISOString() })
+    if (activeRunId) {
+      await onUpsertRunResult(activeRunId, {
+        testCaseId: executingCase.id,
+        status,
+        notes: '',
+        attachments,
+      })
+    }
     setExecutingCase(null)
     setStep('grid')
   }
@@ -700,8 +754,10 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
         tc={liveCase}
         suite={suiteMap[liveCase.testSuiteId]}
         testerRole={testerRole}
+        runId={activeRunId}
         onBack={() => { setExecutingCase(null); setStep('grid') }}
         onSave={handleSaveResult}
+        onUploadAttachment={onUploadAttachment}
       />
     )
   }
@@ -745,6 +801,38 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
       {step === 'suites' && (
         <div className="space-y-5">
           <p className="text-sm text-zinc-600 dark:text-zinc-400">Select one or more test suites to include in this run.</p>
+
+          {/* Resume banner for in-progress runs */}
+          {testRuns.filter(r => r.status === 'in_progress').length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/30 rounded-xl p-4 flex items-start gap-3">
+              <Flag className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">In-progress runs</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                  {testRuns.filter(r => r.status === 'in_progress').length} run{testRuns.filter(r => r.status === 'in_progress').length !== 1 ? 's' : ''} in progress. Resume by selecting the same suites and executor.
+                </p>
+                {onRerunFailed && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {testRuns.filter(r => r.status === 'in_progress').map(run => (
+                      <button
+                        key={run.id}
+                        onClick={() => {
+                          setSelectedSuiteIds(run.suiteIds)
+                          setExecutorId(run.executorId)
+                          setTesterRole(run.testerRole)
+                          setActiveRunId(run.id)
+                          setStep('grid')
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-500/20 hover:bg-amber-200 dark:hover:bg-amber-500/30 rounded-lg transition-colors"
+                      >
+                        <RotateCcw className="w-3 h-3" />{run.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {visibleSuites.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -901,11 +989,28 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
               <ChevronLeft className="w-4 h-4" />Back
             </button>
             <button
-              onClick={() => setStep('grid')}
-              disabled={!executorId}
+              onClick={async () => {
+                if (!executorId) return
+                setStartingRun(true)
+                try {
+                  const run = await onCreateRun({
+                    name: `${testerRole} Run – ${new Date().toLocaleDateString()}`,
+                    suiteIds: selectedSuiteIds,
+                    executorId,
+                    testerRole,
+                  })
+                  setActiveRunId(run.id)
+                } catch {
+                  // proceed without persisted run
+                }
+                setStartingRun(false)
+                setStep('grid')
+              }}
+              disabled={!executorId || startingRun}
               className="flex items-center gap-2 px-5 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-colors"
             >
-              <Play className="w-4 h-4" />Start Execution
+              {startingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+              Start Execution
             </button>
           </div>
         </div>
@@ -943,6 +1048,23 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
               >
                 <Download className="w-4 h-4" />Export CSV
               </button>
+              {activeRunId && (
+                <button
+                  onClick={async () => {
+                    setFinishingRun(true)
+                    try { await onCompleteRun(activeRunId) } catch { /* noop */ }
+                    setActiveRunId(null)
+                    setFinishingRun(false)
+                    setStep('suites')
+                    setSelectedSuiteIds([])
+                  }}
+                  disabled={finishingRun}
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 rounded-lg transition-colors"
+                >
+                  {finishingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Finish Run
+                </button>
+              )}
             </div>
           </div>
 
@@ -1024,6 +1146,14 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
                         })}
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {(status === 'Fail' || status === 'Blocked') && (
+                              <button
+                                onClick={() => setLogDefectCase(tc)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors"
+                              >
+                                <Bug className="w-3.5 h-3.5" />Log Defect
+                              </button>
+                            )}
                             <button
                               onClick={() => { setViewingCase(tc); setStep('view') }}
                               className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md transition-colors"
@@ -1046,6 +1176,20 @@ export default function TestRunner({ testSuites, testCases, users, onUpdateTestC
             </div>
           </div>
         </div>
+      )}
+
+      {/* Log Defect Modal */}
+      {logDefectCase && (
+        <LogDefectModal
+          isOpen={!!logDefectCase}
+          testCaseId={logDefectCase.id}
+          testCaseTitle={logDefectCase.title}
+          onClose={() => setLogDefectCase(null)}
+          onSave={async (defect) => {
+            await onAddDefect(defect)
+            setLogDefectCase(null)
+          }}
+        />
       )}
     </div>
   )

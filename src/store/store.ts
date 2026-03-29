@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import type {
-  User, TestSuite, TestCase, TestStep, TestRun,
+  User, TestSuite, TestCase, TestStep, TestRun, RunAttachment,
+  Defect, DefectSeverity, DefectStatus, Comment, ActivityEvent, ActivityAction,
   UserRole, TestStatus, Priority, TesterRole, AttributeDef, InheritanceConfig,
 } from '../types'
 
@@ -12,6 +13,7 @@ interface DbUser {
   name: string
   email: string
   roles: string[]
+  is_active: boolean
 }
 
 interface DbTestSuite {
@@ -60,7 +62,9 @@ interface DbTestRun {
   suite_ids: string[]
   executor_id: string | null
   tester_role: string
+  status: string
   created_at: string
+  completed_at: string | null
 }
 
 interface DbRunResult {
@@ -69,12 +73,43 @@ interface DbRunResult {
   test_case_id: string
   status: string
   notes: string
+  attachments: RunAttachment[]
+  updated_at: string
+}
+
+interface DbDefect {
+  id: string
+  run_result_id: string | null
+  test_case_id: string
+  title: string
+  severity: string
+  description: string
+  reporter_id: string | null
+  status: string
+  created_at: string
+}
+
+interface DbComment {
+  id: string
+  test_case_id: string
+  author_id: string | null
+  body: string
+  created_at: string
+}
+
+interface DbActivityEvent {
+  id: string
+  test_case_id: string
+  actor_id: string | null
+  action: string
+  metadata: Record<string, unknown>
+  created_at: string
 }
 
 // ── Mappers: DB row → TypeScript type ────────────────────────────────────────
 
 function toUser(row: DbUser): User {
-  return { id: row.id, name: row.name, email: row.email, roles: row.roles as UserRole[] }
+  return { id: row.id, name: row.name, email: row.email, roles: row.roles as UserRole[], isActive: row.is_active ?? true }
 }
 
 function toTestSuite(row: DbTestSuite): TestSuite {
@@ -131,10 +166,52 @@ function toTestRun(row: DbTestRun, allResults: DbRunResult[]): TestRun {
     suiteIds: row.suite_ids,
     executorId: row.executor_id ?? '',
     testerRole: row.tester_role as TesterRole,
+    status: (row.status ?? 'completed') as 'in_progress' | 'completed',
     createdAt: row.created_at,
+    completedAt: row.completed_at ?? undefined,
     results: allResults
       .filter(r => r.run_id === row.id)
-      .map(r => ({ testCaseId: r.test_case_id, status: r.status as TestStatus, notes: r.notes })),
+      .map(r => ({
+        testCaseId: r.test_case_id,
+        status: r.status as TestStatus,
+        notes: r.notes,
+        attachments: r.attachments ?? [],
+      })),
+  }
+}
+
+function toDefect(row: DbDefect): Defect {
+  return {
+    id: row.id,
+    runResultId: row.run_result_id,
+    testCaseId: row.test_case_id,
+    title: row.title,
+    severity: row.severity as DefectSeverity,
+    description: row.description,
+    reporterId: row.reporter_id,
+    status: row.status as DefectStatus,
+    createdAt: row.created_at,
+  }
+}
+
+function toComment(row: DbComment): Comment {
+  return {
+    id: row.id,
+    testCaseId: row.test_case_id,
+    authorId: row.author_id,
+    body: row.body,
+    createdAt: row.created_at,
+  }
+}
+
+function toActivityEvent(row: DbActivityEvent): ActivityEvent {
+  return {
+    id: row.id,
+    testCaseId: row.test_case_id,
+    actorId: row.actor_id,
+    action: row.action as ActivityAction,
+    metadata: row.metadata ?? {},
+    createdAt: row.created_at,
   }
 }
 
@@ -165,7 +242,17 @@ export function useTestStore() {
   const [testSuites, setTestSuites] = useState<TestSuite[]>([])
   const [testCases, setTestCases]   = useState<TestCase[]>([])
   const [testRuns, setTestRuns]     = useState<TestRun[]>([])
+  const [defects, setDefects]       = useState<Defect[]>([])
   const [loading, setLoading]       = useState(true)
+
+  async function getCurrentUserId(): Promise<string | null> {
+    const { data } = await supabase.auth.getUser()
+    if (!data.user) return null
+    // Look up app user by auth email
+    const { data: row } = await supabase
+      .from('users').select('id').eq('email', data.user.email ?? '').maybeSingle()
+    return row?.id ?? null
+  }
 
   // ── Helper: reload test cases + inheritance together ──────────────────────
   async function reloadCases() {
@@ -183,13 +270,14 @@ export function useTestStore() {
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
     async function loadAll() {
-      const [usersRes, suitesRes, casesRes, runsRes, resultsRes, inhRes] = await Promise.all([
+      const [usersRes, suitesRes, casesRes, runsRes, resultsRes, inhRes, defectsRes] = await Promise.all([
         supabase.from('users').select('*').order('name'),
         supabase.from('test_suites').select('*').order('created_at'),
         supabase.from('test_cases').select('*').order('created_at'),
         supabase.from('test_runs').select('*').order('created_at', { ascending: false }),
         supabase.from('run_results').select('*'),
         supabase.from('test_case_inheritance').select('*'),
+        supabase.from('defects').select('*').order('created_at', { ascending: false }),
       ])
       if (usersRes.data)  setUsers(usersRes.data.map(toUser))
       if (suitesRes.data) setTestSuites(suitesRes.data.map(toTestSuite))
@@ -202,6 +290,7 @@ export function useTestStore() {
         const results = resultsRes.data as DbRunResult[]
         setTestRuns((runsRes.data as DbTestRun[]).map(r => toTestRun(r, results)))
       }
+      if (defectsRes.data) setDefects(defectsRes.data.map(toDefect))
       setLoading(false)
     }
     loadAll()
@@ -230,6 +319,11 @@ export function useTestStore() {
       }
     }
 
+    async function refetchDefects() {
+      const { data } = await supabase.from('defects').select('*').order('created_at', { ascending: false })
+      if (data) setDefects(data.map(toDefect))
+    }
+
     const channel = supabase
       .channel('qa-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'users' },                  refetchCore)
@@ -238,6 +332,7 @@ export function useTestStore() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'test_case_inheritance' },  reloadCases)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'test_runs' },              refetchRuns)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'run_results' },            refetchRuns)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'defects' },               refetchDefects)
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
@@ -291,7 +386,8 @@ export function useTestStore() {
 
   // ── Test Cases ────────────────────────────────────────────────────────────
   const addTestCase = useCallback(async (tc: Omit<TestCase, 'id'>) => {
-    await supabase.from('test_cases').insert(fromTestCase(tc))
+    const { data } = await supabase.from('test_cases').insert(fromTestCase(tc)).select('id').single()
+    if (data?.id) void logActivity(data.id, 'created', { title: tc.title })
   }, [])
 
   const updateTestCase = useCallback(async (id: string, data: Partial<Omit<TestCase, 'id'>>) => {
@@ -309,6 +405,8 @@ export function useTestStore() {
     if (data.testSuiteId     !== undefined) patch.test_suite_id    = data.testSuiteId || null
     if (data.attributeValues !== undefined) patch.attribute_values = data.attributeValues
     await supabase.from('test_cases').update(patch).eq('id', id)
+    const changedFields = Object.keys(data)
+    if (changedFields.length > 0) void logActivity(id, 'edited', { fields: changedFields })
 
     // Propagate inherited fields to children
     const { data: inhRows } = await supabase
@@ -458,6 +556,8 @@ export function useTestStore() {
     if (patch.batStatus   !== undefined) dbPatch.bat_status    = patch.batStatus
     if (patch.testSuiteId !== undefined) dbPatch.test_suite_id = patch.testSuiteId || null
     await supabase.from('test_cases').update(dbPatch).in('id', ids)
+    const action: ActivityAction = patch.testSuiteId !== undefined ? 'moved' : 'status_changed'
+    for (const id of ids) void logActivity(id, action, dbPatch)
   }, [])
 
   const copyTestCase = useCallback(async (sourceId: string, targetSuiteId?: string) => {
@@ -477,6 +577,17 @@ export function useTestStore() {
       test_suite_id: targetSuiteId ?? source.testSuiteId ?? null,
     })
   }, [testCases])
+
+  // ── Activity Log helper ───────────────────────────────────────────────────
+  async function logActivity(testCaseId: string, action: ActivityAction, metadata: Record<string, unknown> = {}) {
+    const actorId = await getCurrentUserId()
+    await supabase.from('activity_log').insert({
+      test_case_id: testCaseId,
+      actor_id: actorId,
+      action,
+      metadata,
+    })
+  }
 
   // ── Test Runs ─────────────────────────────────────────────────────────────
   const saveRun = useCallback(async (run: TestRun) => {
@@ -514,15 +625,117 @@ export function useTestStore() {
     }
   }, [])
 
+  // ── Persistent Run methods ────────────────────────────────────────────────
+  const createTestRun = useCallback(async (opts: {
+    name: string
+    suiteIds: string[]
+    executorId: string
+    testerRole: TesterRole
+  }): Promise<TestRun> => {
+    const { data, error } = await supabase.from('test_runs').insert({
+      name: opts.name,
+      suite_ids: opts.suiteIds,
+      executor_id: opts.executorId || null,
+      tester_role: opts.testerRole,
+      status: 'in_progress',
+    }).select().single()
+    if (error || !data) throw error ?? new Error('Failed to create run')
+    return toTestRun(data as DbTestRun, [])
+  }, [])
+
+  const upsertRunResult = useCallback(async (
+    runId: string,
+    result: { testCaseId: string; status: TestStatus; notes: string; attachments?: RunAttachment[] },
+  ): Promise<void> => {
+    await supabase.from('run_results').upsert({
+      run_id: runId,
+      test_case_id: result.testCaseId,
+      status: result.status,
+      notes: result.notes,
+      attachments: result.attachments ?? [],
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'run_id,test_case_id' })
+  }, [])
+
+  const completeTestRun = useCallback(async (runId: string): Promise<void> => {
+    await supabase.from('test_runs').update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+    }).eq('id', runId)
+  }, [])
+
+  const deleteTestRun = useCallback(async (id: string): Promise<void> => {
+    await supabase.from('run_results').delete().eq('run_id', id)
+    await supabase.from('test_runs').delete().eq('id', id)
+  }, [])
+
+  const uploadRunAttachment = useCallback(async (
+    runId: string,
+    tcId: string,
+    file: File,
+  ): Promise<string> => {
+    const path = `${runId}/${tcId}/${Date.now()}-${file.name}`
+    const { error } = await supabase.storage.from('run-attachments').upload(path, file)
+    if (error) throw error
+    const { data: urlData } = supabase.storage.from('run-attachments').getPublicUrl(path)
+    return urlData.publicUrl
+  }, [])
+
+  // ── Defects ──────────────────────────────────────────────────────────────
+  const addDefect = useCallback(async (defect: Omit<Defect, 'id' | 'createdAt'>): Promise<void> => {
+    const reporterId = await getCurrentUserId()
+    await supabase.from('defects').insert({
+      run_result_id: defect.runResultId ?? null,
+      test_case_id: defect.testCaseId,
+      title: defect.title,
+      severity: defect.severity,
+      description: defect.description,
+      reporter_id: reporterId,
+      status: defect.status,
+    })
+  }, [])
+
+  const updateDefect = useCallback(async (id: string, patch: Partial<Pick<Defect, 'status' | 'title' | 'severity' | 'description'>>): Promise<void> => {
+    await supabase.from('defects').update(patch).eq('id', id)
+  }, [])
+
+  const deleteDefect = useCallback(async (id: string): Promise<void> => {
+    await supabase.from('defects').delete().eq('id', id)
+  }, [])
+
+  // ── Comments ─────────────────────────────────────────────────────────────
+  const fetchComments = useCallback(async (testCaseId: string): Promise<{ comments: Comment[]; activity: ActivityEvent[] }> => {
+    const [commentsRes, activityRes] = await Promise.all([
+      supabase.from('comments').select('*').eq('test_case_id', testCaseId).order('created_at', { ascending: false }),
+      supabase.from('activity_log').select('*').eq('test_case_id', testCaseId).order('created_at', { ascending: false }),
+    ])
+    return {
+      comments: (commentsRes.data ?? []).map(toComment),
+      activity: (activityRes.data ?? []).map(toActivityEvent),
+    }
+  }, [])
+
+  const addComment = useCallback(async (testCaseId: string, body: string): Promise<void> => {
+    const authorId = await getCurrentUserId()
+    await supabase.from('comments').insert({ test_case_id: testCaseId, author_id: authorId, body })
+  }, [])
+
+  // ── User active flag ──────────────────────────────────────────────────────
+  const setUserActive = useCallback(async (id: string, isActive: boolean): Promise<void> => {
+    await supabase.from('users').update({ is_active: isActive }).eq('id', id)
+  }, [])
+
   return {
     users,
     testSuites,
     testCases,
     testRuns,
+    defects,
     loading,
     addUser,
     updateUser,
     deleteUser,
+    setUserActive,
     addTestSuite,
     updateTestSuite,
     deleteTestSuite,
@@ -533,6 +746,17 @@ export function useTestStore() {
     bulkDeleteTestCases,
     bulkUpdateTestCases,
     saveRun,
+    createTestRun,
+    upsertRunResult,
+    completeTestRun,
+    deleteTestRun,
+    uploadRunAttachment,
+    addDefect,
+    updateDefect,
+    deleteDefect,
+    fetchComments,
+    addComment,
+    logActivity,
     linkChildToParent,
     updateInheritance,
     unlinkChild,

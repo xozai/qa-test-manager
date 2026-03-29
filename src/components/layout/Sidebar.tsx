@@ -1,7 +1,7 @@
-import { LayoutDashboard, FlaskConical, FolderOpen, Play, Users, ChevronRight, LogOut, Sun, Moon, Sparkles } from 'lucide-react'
+import { LayoutDashboard, FlaskConical, FolderOpen, Play, Users, ChevronRight, LogOut, Sun, Moon, Sparkles, History, Settings } from 'lucide-react'
 import { cn } from '../../utils/cn'
 
-export type View = 'dashboard' | 'testcases' | 'testsuites' | 'testrunner' | 'users' | 'ai'
+export type View = 'dashboard' | 'testcases' | 'testsuites' | 'testrunner' | 'history' | 'users' | 'ai' | 'settings'
 
 interface NavItem {
   id: View
@@ -15,6 +15,7 @@ interface SidebarProps {
   onNavigate: (view: View) => void
   testCaseCount: number
   testSuiteCount: number
+  isBSA?: boolean
   onSignOut?: () => void
   theme?: 'light' | 'dark'
   onToggleTheme?: () => void
@@ -25,12 +26,13 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'testcases',  label: 'Test Cases',    icon: FlaskConical },
   { id: 'testsuites', label: 'Test Suites',   icon: FolderOpen },
   { id: 'testrunner', label: 'Test Runner',   icon: Play },
+  { id: 'history',    label: 'Run History',   icon: History },
   { id: 'users',      label: 'Users',         icon: Users },
   { id: 'ai',         label: 'AI Assistant',  icon: Sparkles },
 ]
 
 export default function Sidebar({
-  currentView, onNavigate, testCaseCount, testSuiteCount, onSignOut, theme, onToggleTheme,
+  currentView, onNavigate, testCaseCount, testSuiteCount, isBSA, onSignOut, theme, onToggleTheme,
 }: SidebarProps) {
   const getBadge = (id: View) => {
     if (id === 'testcases')  return testCaseCount
@@ -102,6 +104,20 @@ export default function Sidebar({
 
       {/* Footer */}
       <div className="px-3 py-4 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
+        {isBSA && (
+          <button
+            onClick={() => onNavigate('settings')}
+            className={cn(
+              'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+              currentView === 'settings'
+                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40'
+                : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100'
+            )}
+          >
+            <Settings className={cn('w-4 h-4 flex-shrink-0', currentView === 'settings' ? 'text-white' : 'text-zinc-400 dark:text-zinc-500')} />
+            <span className="flex-1 text-left">Settings</span>
+          </button>
+        )}
         {onToggleTheme && (
           <button
             onClick={onToggleTheme}

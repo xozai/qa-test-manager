@@ -24,6 +24,7 @@ export default function TestSuiteModal({ isOpen, onClose, onSave, testSuite, use
   const [jiraNumber, setJiraNumber] = useState('')
   const [isHidden, setIsHidden]     = useState(false)
   const [attributes, setAttributes] = useState<AttributeDef[]>([])
+  const [optionsText, setOptionsText] = useState<Record<string, string>>({})
   const [errors, setErrors]         = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -34,10 +35,14 @@ export default function TestSuiteModal({ isOpen, onClose, onSave, testSuite, use
       setOwnerId(testSuite.ownerId)
       setJiraNumber(testSuite.jiraNumber)
       setIsHidden(testSuite.isHidden)
-      setAttributes(testSuite.attributes ?? [])
+      const attrs = testSuite.attributes ?? []
+      setAttributes(attrs)
+      const raw: Record<string, string> = {}
+      attrs.forEach(a => { raw[a.id] = a.options?.join(', ') ?? '' })
+      setOptionsText(raw)
     } else {
       setName(''); setDescription(''); setOwnerId(users[0]?.id ?? '')
-      setJiraNumber(''); setIsHidden(false); setAttributes([])
+      setJiraNumber(''); setIsHidden(false); setAttributes([]); setOptionsText({})
     }
     setErrors({})
   }, [isOpen, testSuite])
@@ -61,7 +66,11 @@ export default function TestSuiteModal({ isOpen, onClose, onSave, testSuite, use
     onClose()
   }
 
-  function addAttr() { setAttributes(prev => [...prev, { id: genId(), name: '', type: 'text' }]) }
+  function addAttr() {
+    const id = genId()
+    setAttributes(prev => [...prev, { id, name: '', type: 'text' }])
+    setOptionsText(prev => ({ ...prev, [id]: '' }))
+  }
   function removeAttr(i: number) { setAttributes(prev => prev.filter((_, idx) => idx !== i)) }
   function updateAttr(i: number, patch: Partial<AttributeDef>) {
     setAttributes(prev => prev.map((a, idx) => idx === i ? { ...a, ...patch } : a))
@@ -154,14 +163,29 @@ export default function TestSuiteModal({ isOpen, onClose, onSave, testSuite, use
                   <input value={attr.name} onChange={e => updateAttr(i, { name: e.target.value })}
                     placeholder="Attribute name"
                     className="flex-1 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-md px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" />
-                  <select value={attr.type} onChange={e => updateAttr(i, { type: e.target.value as AttributeDef['type'], options: undefined })}
+                  <select value={attr.type} onChange={e => {
+                    const t = e.target.value as AttributeDef['type']
+                    updateAttr(i, { type: t, options: undefined })
+                    if (t === 'select') setOptionsText(prev => ({ ...prev, [attr.id]: '' }))
+                  }}
                     className="bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-md px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors">
                     <option value="text">Text</option>
                     <option value="select">Select</option>
                     <option value="boolean">Boolean</option>
                   </select>
                   {attr.type === 'select' && (
-                    <input value={attr.options?.join(', ') ?? ''} onChange={e => updateAttr(i, { options: e.target.value.split(',').map(o => o.trim()).filter(Boolean) })}
+                    <input
+                      value={optionsText[attr.id] ?? ''}
+                      onChange={e => {
+                        const raw = e.target.value
+                        setOptionsText(prev => ({ ...prev, [attr.id]: raw }))
+                        updateAttr(i, { options: raw.split(',').map(o => o.trim()).filter(Boolean) })
+                      }}
+                      onBlur={e => {
+                        const parsed = e.target.value.split(',').map(o => o.trim()).filter(Boolean)
+                        setOptionsText(prev => ({ ...prev, [attr.id]: parsed.join(', ') }))
+                        updateAttr(i, { options: parsed })
+                      }}
                       placeholder="opt1, opt2, opt3"
                       className="flex-1 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-md px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" />
                   )}

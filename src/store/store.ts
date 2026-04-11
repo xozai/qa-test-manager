@@ -13,7 +13,8 @@ interface DbUser {
   name: string
   email: string
   roles: string[]
-  is_active: boolean
+  is_active?: boolean
+  auth_id?: string
 }
 
 interface DbTestSuite {
@@ -109,8 +110,17 @@ interface DbActivityEvent {
 
 // ── Mappers: DB row → TypeScript type ────────────────────────────────────────
 
-function toUser(row: DbUser): User {
-  return { id: row.id, name: row.name, email: row.email, roles: row.roles as UserRole[], isActive: row.is_active ?? true }
+function toUser(row: DbUser & { authId?: string; confirmedAt?: string; lastSignIn?: string }): User {
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    roles: row.roles as UserRole[],
+    isActive: row.is_active ?? true,
+    authId: row.authId ?? row.auth_id,
+    confirmedAt: row.confirmedAt,
+    lastSignIn: row.lastSignIn,
+  }
 }
 
 function toTestSuite(row: DbTestSuite): TestSuite {
@@ -269,11 +279,22 @@ export function useTestStore() {
     }
   }
 
+  // ── Helper: load auth-linked users via edge function ─────────────────────
+  async function loadAuthUsers() {
+    const { data: { session } } = await supabase.auth.getSession()
+    const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/list-auth-users`, {
+      headers: { 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+    })
+    if (resp.ok) {
+      const { users: authUsers } = await resp.json() as { users: Record<string, unknown>[] }
+      setUsers(authUsers.map(u => toUser(u as unknown as DbUser & { authId?: string; confirmedAt?: string; lastSignIn?: string })))
+    }
+  }
+
   // ── Initial load ─────────────────────────────────────────────────────────
   useEffect(() => {
     async function loadAll() {
-      const [usersRes, suitesRes, casesRes, runsRes, resultsRes, inhRes, defectsRes] = await Promise.all([
-        supabase.from('users').select('*').order('name'),
+      const [suitesRes, casesRes, runsRes, resultsRes, inhRes, defectsRes] = await Promise.all([
         supabase.from('test_suites').select('*').order('created_at'),
         supabase.from('test_cases').select('*').order('created_at'),
         supabase.from('test_runs').select('*').order('created_at', { ascending: false }),
@@ -281,7 +302,7 @@ export function useTestStore() {
         supabase.from('test_case_inheritance').select('*'),
         supabase.from('defects').select('*').order('created_at', { ascending: false }),
       ])
-      if (usersRes.data)  setUsers(usersRes.data.map(toUser))
+      await loadAuthUsers()
       if (suitesRes.data) setTestSuites(suitesRes.data.map(toTestSuite))
       if (casesRes.data && inhRes.data) {
         const rawCases = casesRes.data as DbTestCase[]
@@ -301,11 +322,10 @@ export function useTestStore() {
   // ── Realtime subscriptions ────────────────────────────────────────────────
   useEffect(() => {
     async function refetchCore() {
-      const [u, s] = await Promise.all([
-        supabase.from('users').select('*').order('name'),
+      const [s] = await Promise.all([
         supabase.from('test_suites').select('*').order('created_at'),
       ])
-      if (u.data) setUsers(u.data.map(toUser))
+      await loadAuthUsers()
       if (s.data) setTestSuites(s.data.map(toTestSuite))
       await reloadCases()
     }
@@ -365,6 +385,23 @@ export function useTestStore() {
     const { error } = await supabase.from('users').delete().eq('id', id)
     if (error) throw error
     setUsers(prev => prev.filter(u => u.id !== id))
+  }, [])
+
+  const removeAuthUser = useCallback(async (authId: string) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-auth-user`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token ?? ''}`,
+      },
+      body: JSON.stringify({ authId }),
+    })
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: 'Unknown error' }))
+      throw new Error((err as { error?: string }).error ?? 'Failed to remove user')
+    }
+    setUsers(prev => prev.filter(u => u.authId !== authId))
   }, [])
 
   // ── Test Suites ───────────────────────────────────────────────────────────
@@ -779,6 +816,7 @@ export function useTestStore() {
     addUser,
     updateUser,
     deleteUser,
+    removeAuthUser,
     setUserActive,
     addTestSuite,
     updateTestSuite,

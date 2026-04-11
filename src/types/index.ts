@@ -13,6 +13,9 @@ export interface User {
   email: string
   roles: UserRole[]
   isActive?: boolean
+  authId?: string        // auth.users UUID — present for real auth-linked users
+  confirmedAt?: string   // when they accepted the invite (null = pending)
+  lastSignIn?: string    // last login timestamp
 }
 
 export interface AttributeDef {

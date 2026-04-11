@@ -252,8 +252,10 @@ function AppContent({ session }: { session: Session }) {
           {currentView === 'users' && (
             <UserManagement
               users={store.users}
+              currentUserEmail={session.user.email}
               onSave={handleSaveUser}
-              onDelete={(id) => void store.deleteUser(id)}
+              onRemoveAccess={store.removeAuthUser}
+              onInvite={handleInviteUser}
             />
           )}
 

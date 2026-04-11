@@ -56,27 +56,55 @@ function InheritedBadge({ parentTitle }: { parentTitle: string }) {
 interface InheritancePanelProps {
   config: Omit<InheritanceConfig, 'id' | 'childId' | 'parentId'>
   onChange: (c: Omit<InheritanceConfig, 'id' | 'childId' | 'parentId'>) => void
+  suiteAttrs?: AttributeDef[]
 }
-function InheritanceConfigPanel({ config, onChange }: InheritancePanelProps) {
-  const fields: [keyof typeof config, string][] = [
+function InheritanceConfigPanel({ config, onChange, suiteAttrs = [] }: InheritancePanelProps) {
+  const fields: [keyof Omit<InheritanceConfig, 'id' | 'childId' | 'parentId' | 'inheritedAttributeIds'>, string][] = [
     ['inheritPreconditions', 'Inherit Preconditions'],
     ['inheritTestData',      'Inherit Test Data'],
     ['inheritSteps',         'Inherit Steps'],
-    ['inheritAttributes',    'Inherit Attribute Values'],
+    ['inheritAttributes',    'Inherit All Attribute Values'],
   ]
+  const inheritableAttrs = suiteAttrs.filter(a => a.inheritable !== false)
+
+  function toggleAttrId(attrId: string, checked: boolean) {
+    const ids = config.inheritedAttributeIds ?? []
+    onChange({
+      ...config,
+      inheritedAttributeIds: checked ? [...ids, attrId] : ids.filter(id => id !== attrId),
+    })
+  }
+
   return (
     <div className="mt-3 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 space-y-2">
       {fields.map(([key, label]) => (
         <label key={key} className="flex items-center gap-2.5 cursor-pointer select-none">
           <input
             type="checkbox"
-            checked={config[key]}
+            checked={!!config[key]}
             onChange={e => onChange({ ...config, [key]: e.target.checked })}
             className="w-3.5 h-3.5 rounded border-zinc-400 dark:border-zinc-600 text-violet-600 focus:ring-violet-500"
           />
           <span className="text-xs text-zinc-700 dark:text-zinc-300">{label}</span>
         </label>
       ))}
+      {/* Per-attribute toggles when not inheriting ALL attributes */}
+      {!config.inheritAttributes && inheritableAttrs.length > 0 && (
+        <div className="ml-4 mt-1 space-y-1.5 border-l-2 border-violet-400/30 pl-3">
+          <p className="text-[10px] font-medium text-violet-600 dark:text-violet-400 uppercase tracking-wide">Inherit specific attributes:</p>
+          {inheritableAttrs.map(attr => (
+            <label key={attr.id} className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={(config.inheritedAttributeIds ?? []).includes(attr.id)}
+                onChange={e => toggleAttrId(attr.id, e.target.checked)}
+                className="w-3 h-3 rounded border-zinc-400 dark:border-zinc-600 text-violet-600 focus:ring-violet-500"
+              />
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">{attr.name || <span className="italic text-zinc-400">Unnamed</span>}</span>
+            </label>
+          ))}
+        </div>
+      )}
       <p className="text-[11px] text-amber-600 dark:text-amber-400 flex items-start gap-1.5 mt-2 pt-2 border-t border-violet-500/20">
         <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
         Inherited fields will be overwritten by the parent's current values immediately and on every future parent update.
@@ -115,16 +143,16 @@ export default function TestCaseModal({
   const [parentSearch, setParentSearch] = useState('')
   const [selectedParentId, setSelectedParentId] = useState<string | null>(null)
   const [inhConfig, setInhConfig] = useState<Omit<InheritanceConfig, 'id' | 'childId' | 'parentId'>>({
-    inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false,
+    inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false, inheritedAttributeIds: [],
   })
   const [editingChildId, setEditingChildId] = useState<string | null>(null)
   const [editingChildConfig, setEditingChildConfig] = useState<Omit<InheritanceConfig, 'id' | 'childId' | 'parentId'>>({
-    inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false,
+    inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false, inheritedAttributeIds: [],
   })
   const [addChildSearch, setAddChildSearch] = useState('')
   const [addChildId, setAddChildId] = useState<string | null>(null)
   const [addChildConfig, setAddChildConfig] = useState<Omit<InheritanceConfig, 'id' | 'childId' | 'parentId'>>({
-    inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false,
+    inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false, inheritedAttributeIds: [],
   })
   const [showAddChild, setShowAddChild] = useState(false)
 
@@ -138,12 +166,12 @@ export default function TestCaseModal({
     setShowPropagateConfirm(false)
     setSelectedParentId(null)
     setParentSearch('')
-    setInhConfig({ inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false })
+    setInhConfig({ inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false, inheritedAttributeIds: [] })
     setEditingChildId(null)
     setShowAddChild(false)
     setAddChildSearch('')
     setAddChildId(null)
-    setAddChildConfig({ inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false })
+    setAddChildConfig({ inheritPreconditions: false, inheritTestData: false, inheritSteps: false, inheritAttributes: false, inheritedAttributeIds: [] })
 
     if (testCase) {
       setTestCaseId(testCase.testCaseId)
@@ -560,10 +588,16 @@ export default function TestCaseModal({
                 <div className="grid grid-cols-2 gap-3">
                   {suiteAttrs.map(attr => {
                     const val = attributeValues[attr.id]
-                    const locked = !!inh?.inheritAttributes
+                    const allAttrsLocked = !!inh?.inheritAttributes
+                    const perAttrLocked = !allAttrsLocked && !!(inh?.inheritedAttributeIds ?? []).includes(attr.id)
+                    const locked = allAttrsLocked || perAttrLocked
+                    const parentVal = parentTc?.attributeValues?.[attr.id]
                     return (
                       <div key={attr.id}>
-                        <label className={labelCls}>{attr.name || <span className="italic text-zinc-400">Unnamed</span>}</label>
+                        <label className={labelCls}>
+                          {attr.name || <span className="italic text-zinc-400">Unnamed</span>}
+                          {locked && parentTc && <InheritedBadge parentTitle={parentTc.title} />}
+                        </label>
                         {attr.type === 'text' && (
                           <input value={(val as string) ?? ''} onChange={e => setAttrValue(attr.id, e.target.value)} disabled={locked} className={fieldCls(undefined, locked)} placeholder={`Enter ${attr.name || 'value'}`} />
                         )}
@@ -582,6 +616,12 @@ export default function TestCaseModal({
                             </div>
                             <span className="text-sm text-zinc-600 dark:text-zinc-400">{val ? 'Yes' : 'No'}</span>
                           </label>
+                        )}
+                        {perAttrLocked && parentVal !== undefined && (
+                          <p className="text-[11px] text-violet-500 dark:text-violet-400 mt-1 flex items-center gap-1">
+                            <Lock className="w-2.5 h-2.5" />
+                            Parent: {attr.type === 'boolean' ? (parentVal ? 'Yes' : 'No') : String(parentVal || '—')}
+                          </p>
                         )}
                       </div>
                     )
@@ -617,7 +657,7 @@ export default function TestCaseModal({
                 {/* Edit inheritance config */}
                 {editingChildId === 'self' ? (
                   <>
-                    <InheritanceConfigPanel config={editingChildConfig} onChange={setEditingChildConfig} />
+                    <InheritanceConfigPanel config={editingChildConfig} onChange={setEditingChildConfig} suiteAttrs={suiteAttrs} />
                     <div className="flex gap-2 mt-2">
                       <button
                         onClick={() => { onUpdateInheritance(testCase!.id, editingChildConfig, inh.parentId); setEditingChildId(null) }}
@@ -629,7 +669,7 @@ export default function TestCaseModal({
                 ) : (
                   <div className="flex gap-2 mt-2">
                     <button
-                      onClick={() => { setEditingChildId('self'); setEditingChildConfig({ inheritPreconditions: inh.inheritPreconditions, inheritTestData: inh.inheritTestData, inheritSteps: inh.inheritSteps, inheritAttributes: inh.inheritAttributes }) }}
+                      onClick={() => { setEditingChildId('self'); setEditingChildConfig({ inheritPreconditions: inh.inheritPreconditions, inheritTestData: inh.inheritTestData, inheritSteps: inh.inheritSteps, inheritAttributes: inh.inheritAttributes, inheritedAttributeIds: inh.inheritedAttributeIds ?? [] }) }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-500 bg-violet-500/10 hover:bg-violet-500/20 rounded-lg transition-colors"
                     >
                       <Link className="w-3.5 h-3.5" />Edit Inheritance
@@ -672,7 +712,7 @@ export default function TestCaseModal({
                               <div className="flex items-center justify-end gap-1">
                                 {editingChildId === child.id ? (
                                   <div className="w-full">
-                                    <InheritanceConfigPanel config={editingChildConfig} onChange={setEditingChildConfig} />
+                                    <InheritanceConfigPanel config={editingChildConfig} onChange={setEditingChildConfig} suiteAttrs={suiteAttrs} />
                                     <div className="flex gap-2 mt-2">
                                       <button onClick={() => { onUpdateInheritance(child.id, editingChildConfig, testCase.id); setEditingChildId(null) }} className="px-2 py-1 text-[11px] font-medium text-white bg-violet-600 hover:bg-violet-500 rounded transition-colors">Save</button>
                                       <button onClick={() => setEditingChildId(null)} className="px-2 py-1 text-[11px] text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">Cancel</button>
@@ -681,7 +721,7 @@ export default function TestCaseModal({
                                 ) : (
                                   <>
                                     <button
-                                      onClick={() => { setEditingChildId(child.id); setEditingChildConfig({ inheritPreconditions: cfg?.inheritPreconditions ?? false, inheritTestData: cfg?.inheritTestData ?? false, inheritSteps: cfg?.inheritSteps ?? false, inheritAttributes: cfg?.inheritAttributes ?? false }) }}
+                                      onClick={() => { setEditingChildId(child.id); setEditingChildConfig({ inheritPreconditions: cfg?.inheritPreconditions ?? false, inheritTestData: cfg?.inheritTestData ?? false, inheritSteps: cfg?.inheritSteps ?? false, inheritAttributes: cfg?.inheritAttributes ?? false, inheritedAttributeIds: cfg?.inheritedAttributeIds ?? [] }) }}
                                       className="p-1 text-violet-500 hover:text-violet-400 hover:bg-violet-500/10 rounded transition-colors"
                                       title="Edit inheritance"
                                     ><Link className="w-3.5 h-3.5" /></button>
@@ -738,7 +778,7 @@ export default function TestCaseModal({
                       </div>
                     )}
                     {addChildId && (
-                      <InheritanceConfigPanel config={addChildConfig} onChange={setAddChildConfig} />
+                      <InheritanceConfigPanel config={addChildConfig} onChange={setAddChildConfig} suiteAttrs={suiteAttrs} />
                     )}
                     <div className="flex gap-2">
                       <button
@@ -783,7 +823,7 @@ export default function TestCaseModal({
                 )}
                 {selectedParentId && (
                   <>
-                    <InheritanceConfigPanel config={inhConfig} onChange={setInhConfig} />
+                    <InheritanceConfigPanel config={inhConfig} onChange={setInhConfig} suiteAttrs={suiteAttrs} />
                     <button
                       onClick={() => { if (testCase && selectedParentId) { onLinkChild(testCase.id, selectedParentId, inhConfig); setSelectedParentId(null); setParentSearch('') } }}
                       disabled={!testCase}

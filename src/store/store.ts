@@ -54,6 +54,7 @@ interface DbInheritance {
   inherit_test_data: boolean
   inherit_steps: boolean
   inherit_attributes: boolean
+  inherited_attribute_ids: string[]
 }
 
 interface DbTestRun {
@@ -152,6 +153,7 @@ function toTestCase(row: DbTestCase, inheritanceRows: DbInheritance[] = [], allC
       inheritTestData: inheritRow.inherit_test_data,
       inheritSteps: inheritRow.inherit_steps,
       inheritAttributes: inheritRow.inherit_attributes,
+      inheritedAttributeIds: inheritRow.inherited_attribute_ids ?? [],
     } : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -431,13 +433,22 @@ export function useTestStore() {
         childPatch.test_data = data.testData
       if (inh.inherit_steps && data.steps !== undefined)
         childPatch.steps = data.steps
-      if (inh.inherit_attributes && data.attributeValues !== undefined) {
-        // Merge: only overwrite keys that exist in the child's current attribute_values
-        const merged = { ...child.attribute_values }
-        for (const key of Object.keys(data.attributeValues)) {
-          if (key in merged) merged[key] = data.attributeValues[key]
+      if (data.attributeValues !== undefined) {
+        if (inh.inherit_attributes) {
+          // Inherit ALL attributes
+          const merged = { ...child.attribute_values }
+          for (const key of Object.keys(data.attributeValues)) {
+            if (key in merged) merged[key] = data.attributeValues[key]
+          }
+          childPatch.attribute_values = merged
+        } else if (inh.inherited_attribute_ids?.length) {
+          // Inherit only specific attributes
+          const merged = { ...child.attribute_values }
+          for (const attrId of inh.inherited_attribute_ids) {
+            if (attrId in data.attributeValues) merged[attrId] = data.attributeValues[attrId]
+          }
+          childPatch.attribute_values = merged
         }
-        childPatch.attribute_values = merged
       }
       if (Object.keys(childPatch).length > 0) {
         await supabase.from('test_cases').update(childPatch).eq('id', inh.child_id)
@@ -466,6 +477,7 @@ export function useTestStore() {
       inherit_test_data: config.inheritTestData,
       inherit_steps: config.inheritSteps,
       inherit_attributes: config.inheritAttributes,
+      inherited_attribute_ids: config.inheritedAttributeIds ?? [],
     }, { onConflict: 'child_id' })
 
     // Immediately apply inherited fields from parent to child
@@ -488,6 +500,12 @@ export function useTestStore() {
         if (key in merged) merged[key] = parent.attribute_values[key]
       }
       applyPatch.attribute_values = merged
+    } else if (config.inheritedAttributeIds?.length) {
+      const merged = { ...child.attribute_values }
+      for (const attrId of config.inheritedAttributeIds) {
+        if (attrId in parent.attribute_values) merged[attrId] = parent.attribute_values[attrId]
+      }
+      applyPatch.attribute_values = merged
     }
     if (Object.keys(applyPatch).length > 0) {
       await supabase.from('test_cases').update(applyPatch).eq('id', childId)
@@ -505,7 +523,7 @@ export function useTestStore() {
       inherit_test_data: config.inheritTestData,
       inherit_steps: config.inheritSteps,
       inherit_attributes: config.inheritAttributes,
-      updated_at: new Date().toISOString(),
+      inherited_attribute_ids: config.inheritedAttributeIds ?? [],
     }).eq('child_id', childId)
     // Re-apply inherited fields
     const { data: parentRow } = await supabase
@@ -525,6 +543,12 @@ export function useTestStore() {
       const merged = { ...child.attribute_values }
       for (const key of Object.keys(parent.attribute_values)) {
         if (key in merged) merged[key] = parent.attribute_values[key]
+      }
+      applyPatch.attribute_values = merged
+    } else if (config.inheritedAttributeIds?.length) {
+      const merged = { ...child.attribute_values }
+      for (const attrId of config.inheritedAttributeIds) {
+        if (attrId in parent.attribute_values) merged[attrId] = parent.attribute_values[attrId]
       }
       applyPatch.attribute_values = merged
     }
@@ -720,6 +744,16 @@ export function useTestStore() {
     await supabase.from('comments').insert({ test_case_id: testCaseId, author_id: authorId, body })
   }, [])
 
+  // ── Bulk add test cases to an existing suite (AI import) ─────────────────
+  const addTestCasesToSuite = useCallback(async (
+    suiteId: string,
+    cases: Omit<TestCase, 'id'>[],
+  ): Promise<void> => {
+    if (cases.length === 0) return
+    const rows = cases.map(tc => ({ ...fromTestCase(tc), test_suite_id: suiteId }))
+    await supabase.from('test_cases').insert(rows)
+  }, [])
+
   // ── User active flag ──────────────────────────────────────────────────────
   const setUserActive = useCallback(async (id: string, isActive: boolean): Promise<void> => {
     await supabase.from('users').update({ is_active: isActive }).eq('id', id)
@@ -745,6 +779,7 @@ export function useTestStore() {
     copyTestCase,
     bulkDeleteTestCases,
     bulkUpdateTestCases,
+    addTestCasesToSuite,
     saveRun,
     createTestRun,
     upsertRunResult,

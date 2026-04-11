@@ -20,6 +20,7 @@ export interface AttributeDef {
   name: string
   type: 'text' | 'select' | 'boolean'
   options?: string[]
+  inheritable?: boolean   // default true — controls whether child cases can inherit this attribute
 }
 
 export interface TestSuite {
@@ -46,7 +47,8 @@ export interface InheritanceConfig {
   inheritPreconditions: boolean
   inheritTestData: boolean
   inheritSteps: boolean
-  inheritAttributes: boolean
+  inheritAttributes: boolean        // true = inherit ALL custom attributes
+  inheritedAttributeIds: string[]   // IDs of specific attributes to inherit when inheritAttributes is false
 }
 
 export interface TestCase {

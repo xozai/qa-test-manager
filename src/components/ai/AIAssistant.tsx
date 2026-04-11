@@ -11,6 +11,7 @@ interface AIAssistantProps {
   testSuites: TestSuite[]
   existingTestCaseIds: string[]
   onImport: (suite: Omit<TestSuite, 'id'>, cases: Omit<TestCase, 'id'>[]) => void
+  onImportToSuite: (suiteId: string, cases: Omit<TestCase, 'id'>[]) => void
   onNavigate: (view: 'testcases') => void
 }
 
@@ -25,7 +26,7 @@ const EXAMPLE_PROMPTS = [
   'File upload feature — valid files, oversized files, unsupported formats, network failure',
 ]
 
-export default function AIAssistant({ existingTestCaseIds, onImport, onNavigate }: AIAssistantProps) {
+export default function AIAssistant({ testSuites, existingTestCaseIds, onImport, onImportToSuite, onNavigate }: AIAssistantProps) {
   const { generate, loading, error, result, reset } = useAIAgent()
   const [prompt, setPrompt] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -35,6 +36,9 @@ export default function AIAssistant({ existingTestCaseIds, onImport, onNavigate 
   const [editedJira, setEditedJira] = useState('')
   const [importing, setImporting] = useState(false)
   const [imported, setImported] = useState(false)
+  // Target suite mode
+  const [targetMode, setTargetMode] = useState<'new' | 'existing'>('new')
+  const [targetSuiteId, setTargetSuiteId] = useState('')
 
   async function handleGenerate() {
     await generate(prompt)
@@ -81,34 +85,53 @@ export default function AIAssistant({ existingTestCaseIds, onImport, onNavigate 
       return m ? parseInt(m[1], 10) : 0
     }))
 
-    const suiteId = genId()
-    const suite: Omit<TestSuite, 'id'> = {
-      name: editedSuiteName || result.suite.name,
-      description: editedSuiteDesc || result.suite.description,
-      jiraNumber: editedJira || result.suite.jiraNumber,
-      ownerId: '',
-      isHidden: false,
-      attributes: [],
+    const selectedCases = result.testCases.filter(tc => selectedIds.has(tc.testCaseId))
+
+    if (targetMode === 'existing' && targetSuiteId) {
+      const cases: Omit<TestCase, 'id'>[] = selectedCases.map((tc, i) => ({
+        testCaseId: `TC-${String(maxNum + i + 1).padStart(3, '0')}`,
+        title: tc.title,
+        description: tc.description,
+        preconditions: tc.preconditions,
+        testData: tc.testData,
+        priority: tc.priority as Priority,
+        testSuiteId: targetSuiteId,
+        qaStatus: 'Not Run' as TestStatus,
+        uatStatus: 'Not Run' as TestStatus,
+        batStatus: 'Not Run' as TestStatus,
+        steps: tc.steps,
+        attributeValues: {},
+        parentId: null,
+      }))
+      onImportToSuite(targetSuiteId, cases)
+    } else {
+      const suiteId = genId()
+      const suite: Omit<TestSuite, 'id'> = {
+        name: editedSuiteName || result.suite.name,
+        description: editedSuiteDesc || result.suite.description,
+        jiraNumber: editedJira || result.suite.jiraNumber,
+        ownerId: '',
+        isHidden: false,
+        attributes: [],
+      }
+      const cases: Omit<TestCase, 'id'>[] = selectedCases.map((tc, i) => ({
+        testCaseId: `TC-${String(maxNum + i + 1).padStart(3, '0')}`,
+        title: tc.title,
+        description: tc.description,
+        preconditions: tc.preconditions,
+        testData: tc.testData,
+        priority: tc.priority as Priority,
+        testSuiteId: suiteId,
+        qaStatus: 'Not Run' as TestStatus,
+        uatStatus: 'Not Run' as TestStatus,
+        batStatus: 'Not Run' as TestStatus,
+        steps: tc.steps,
+        attributeValues: {},
+        parentId: null,
+      }))
+      onImport(suite, cases)
     }
 
-    const selectedCases = result.testCases.filter(tc => selectedIds.has(tc.testCaseId))
-    const cases: Omit<TestCase, 'id'>[] = selectedCases.map((tc, i) => ({
-      testCaseId: `TC-${String(maxNum + i + 1).padStart(3, '0')}`,
-      title: tc.title,
-      description: tc.description,
-      preconditions: tc.preconditions,
-      testData: tc.testData,
-      priority: tc.priority as Priority,
-      testSuiteId: suiteId,
-      qaStatus: 'Not Run' as TestStatus,
-      uatStatus: 'Not Run' as TestStatus,
-      batStatus: 'Not Run' as TestStatus,
-      steps: tc.steps,
-      attributeValues: {},
-      parentId: null,
-    }))
-
-    onImport(suite, cases)
     setImporting(false)
     setImported(true)
     setTimeout(() => onNavigate('testcases'), 1200)
@@ -179,7 +202,7 @@ export default function AIAssistant({ existingTestCaseIds, onImport, onNavigate 
               </button>
               {result && (
                 <button
-                  onClick={() => { reset(); setImported(false) }}
+                  onClick={() => { reset(); setImported(false); setTargetMode('new'); setTargetSuiteId('') }}
                   className="flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-lg transition-colors"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />Regenerate
@@ -223,20 +246,55 @@ export default function AIAssistant({ existingTestCaseIds, onImport, onNavigate 
                   <Wand2 className="w-4 h-4 text-indigo-500" />
                   <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">Generated Suite — review & edit before importing</p>
                 </div>
-                <div className="grid grid-cols-[1fr_auto] gap-4">
+
+                {/* Target suite mode toggle */}
+                <div className="flex items-center gap-1 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit">
+                  <button
+                    onClick={() => setTargetMode('new')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${targetMode === 'new' ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                  >
+                    Create new suite
+                  </button>
+                  <button
+                    onClick={() => setTargetMode('existing')}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${targetMode === 'existing' ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}`}
+                  >
+                    Add to existing suite
+                  </button>
+                </div>
+
+                {targetMode === 'new' ? (
+                  <>
+                    <div className="grid grid-cols-[1fr_auto] gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-zinc-500 mb-1">Suite Name</label>
+                        <input value={editedSuiteName} onChange={e => setEditedSuiteName(e.target.value)} className={fieldCls} />
+                      </div>
+                      <div className="w-36">
+                        <label className="block text-xs font-medium text-zinc-500 mb-1">JIRA Number</label>
+                        <input value={editedJira} onChange={e => setEditedJira(e.target.value)} className={fieldCls} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-zinc-500 mb-1">Description</label>
+                      <textarea value={editedSuiteDesc} onChange={e => setEditedSuiteDesc(e.target.value)} rows={2} className={`${fieldCls} resize-none`} />
+                    </div>
+                  </>
+                ) : (
                   <div>
-                    <label className="block text-xs font-medium text-zinc-500 mb-1">Suite Name</label>
-                    <input value={editedSuiteName} onChange={e => setEditedSuiteName(e.target.value)} className={fieldCls} />
+                    <label className="block text-xs font-medium text-zinc-500 mb-1">Target Suite</label>
+                    <select
+                      value={targetSuiteId}
+                      onChange={e => setTargetSuiteId(e.target.value)}
+                      className={fieldCls}
+                    >
+                      <option value="">— Select a suite —</option>
+                      {testSuites.filter(s => !s.isHidden).map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
                   </div>
-                  <div className="w-36">
-                    <label className="block text-xs font-medium text-zinc-500 mb-1">JIRA Number</label>
-                    <input value={editedJira} onChange={e => setEditedJira(e.target.value)} className={fieldCls} />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-zinc-500 mb-1">Description</label>
-                  <textarea value={editedSuiteDesc} onChange={e => setEditedSuiteDesc(e.target.value)} rows={2} className={`${fieldCls} resize-none`} />
-                </div>
+                )}
               </div>
 
               {/* Test case table */}
@@ -328,11 +386,14 @@ export default function AIAssistant({ existingTestCaseIds, onImport, onNavigate 
               {/* Import button */}
               <div className="flex items-center justify-between pt-1">
                 <p className="text-xs text-zinc-500">
-                  {selectedIds.size} test case{selectedIds.size !== 1 ? 's' : ''} will be imported into a new suite.
+                  {targetMode === 'existing' && targetSuiteId
+                    ? `${selectedIds.size} test case${selectedIds.size !== 1 ? 's' : ''} will be added to "${testSuites.find(s => s.id === targetSuiteId)?.name ?? '…'}"`
+                    : `${selectedIds.size} test case${selectedIds.size !== 1 ? 's' : ''} will be imported into a new suite.`
+                  }
                 </p>
                 <button
                   onClick={handleImport}
-                  disabled={selectedIds.size === 0 || importing}
+                  disabled={selectedIds.size === 0 || importing || (targetMode === 'existing' && !targetSuiteId)}
                   className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-40 disabled:cursor-not-allowed rounded-lg transition-all shadow-sm"
                 >
                   <Download className="w-4 h-4" />

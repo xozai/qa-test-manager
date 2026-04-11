@@ -43,7 +43,7 @@ const COLUMNS: ColumnDef[] = [
 ]
 
 const PRIORITY_OPTIONS: Priority[] = ['High', 'Med', 'Low']
-const STATUS_OPTIONS: TestStatus[] = ['Pass', 'Fail', 'Blocked', 'Skipped', 'Not Run']
+const STATUS_OPTIONS: TestStatus[] = ['Pass', 'Fail', 'Blocked', 'Skipped', 'Not Run', 'Untested']
 
 function allParent(tc: TestCase, all: TestCase[]): string {
   const p = all.find(t => t.id === tc.parentId)
@@ -316,7 +316,7 @@ export default function TestCaseGrid({
 
   function handleBulkDelete() {
     if (onBulkDelete) {
-      onBulkDelete([...selectedIds])
+      onBulkDelete([...selectedIds].filter(id => filteredIds.includes(id)))
       clearSelection()
     }
     setBulkDeleteConfirm(false)
@@ -324,7 +324,7 @@ export default function TestCaseGrid({
 
   function handleBulkStatus(field: 'qaStatus' | 'uatStatus' | 'batStatus') {
     if (onBulkUpdateStatus) {
-      onBulkUpdateStatus([...selectedIds], field, 'Not Run')
+      onBulkUpdateStatus([...selectedIds].filter(id => filteredIds.includes(id)), field, 'Not Run')
       clearSelection()
     }
     setShowBulkStatusMenu(false)
@@ -332,10 +332,15 @@ export default function TestCaseGrid({
 
   function handleBulkMove() {
     if (onBulkMove && bulkMoveTarget) {
-      onBulkMove([...selectedIds], bulkMoveTarget)
+      onBulkMove([...selectedIds].filter(id => filteredIds.includes(id)), bulkMoveTarget)
       clearSelection()
     }
   }
+
+  // Selected suite for scoped view
+  const selectedSuite = filters.testSuiteId ? testSuites.find(s => s.id === filters.testSuiteId) ?? null : null
+  const selectedSuiteAttrs = selectedSuite?.attributes ?? []
+  const dynamicColCount = selectedSuiteAttrs.length
 
   const toDeleteCase = testCases.find(tc => tc.id === deleteId)
 
@@ -368,6 +373,8 @@ export default function TestCaseGrid({
                 <ChevronDown className="w-3 h-3" />
               </button>
               {showExportMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
                 <div className="absolute right-0 top-full mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-20 py-1 min-w-[180px]">
                   <button
                     onClick={() => { exportTestCasesToCSV(filtered, testSuites); setShowExportMenu(false) }}
@@ -387,6 +394,7 @@ export default function TestCaseGrid({
                     Export Selected ({selectedCount})
                   </button>
                 </div>
+                </>
               )}
             </div>
             <button
@@ -631,6 +639,25 @@ export default function TestCaseGrid({
         </div>
       )}
 
+      {/* Suite sub-header (when a suite is selected) */}
+      {selectedSuite && (
+        <div className="flex-shrink-0 px-6 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-indigo-50/40 dark:bg-indigo-900/10 flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200 truncate">{selectedSuite.name}</p>
+            {selectedSuite.description && (
+              <p className="text-xs text-zinc-500 truncate mt-0.5">{selectedSuite.description}</p>
+            )}
+          </div>
+          {selectedSuite.jiraNumber && (
+            <span className="text-xs font-mono text-indigo-500 dark:text-indigo-400 flex-shrink-0">{selectedSuite.jiraNumber}</span>
+          )}
+          <span className="text-xs text-zinc-500 flex-shrink-0">
+            {filtered.length} {filtered.length === 1 ? 'case' : 'cases'}
+            {selectedSuiteAttrs.length > 0 && ` · ${selectedSuiteAttrs.length} custom attr${selectedSuiteAttrs.length !== 1 ? 's' : ''}`}
+          </span>
+        </div>
+      )}
+
       {/* Table */}
       <div className="flex-1 overflow-auto">
         <table className="w-full text-sm min-w-[900px]">
@@ -664,6 +691,11 @@ export default function TestCaseGrid({
                   </span>
                 </th>
               ))}
+              {selectedSuiteAttrs.map(attr => (
+                <th key={attr.id} className="px-4 py-3 text-left text-xs font-medium text-indigo-500 dark:text-indigo-400 uppercase tracking-wide whitespace-nowrap max-w-[120px]">
+                  {attr.name || 'Attr'}
+                </th>
+              ))}
               <th className="px-4 py-3 text-xs font-medium text-zinc-500 uppercase tracking-wide w-24 text-right">
                 Actions
               </th>
@@ -672,7 +704,7 @@ export default function TestCaseGrid({
           <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800/60">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length + 4} className="px-4 py-16 text-center text-sm text-zinc-500">
+                <td colSpan={COLUMNS.length + 4 + dynamicColCount} className="px-4 py-16 text-center text-sm text-zinc-500">
                   {testCases.length === 0 ? 'No test cases yet. Create your first one.' : 'No results match your filters.'}
                 </td>
               </tr>
@@ -702,9 +734,9 @@ export default function TestCaseGrid({
                           : <div className="w-4 h-4 rounded border-2 border-zinc-300 dark:border-zinc-600 group-hover:border-indigo-400 transition-colors" />}
                       </button>
                     </td>
-                    {/* Expand attrs toggle */}
+                    {/* Expand attrs toggle (only shown in All-suites view; hidden when dynamic columns are shown) */}
                     <td className="px-2 py-3 w-8">
-                      {hasAttrs && (
+                      {hasAttrs && dynamicColCount === 0 && (
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : tc.id)}
                           className="p-1 rounded text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors"
@@ -779,6 +811,21 @@ export default function TestCaseGrid({
                         {tc.updatedAt ? new Date(tc.updatedAt).toLocaleDateString() : '—'}
                       </span>
                     </td>
+                    {selectedSuiteAttrs.map(attr => {
+                      const val = tc.attributeValues?.[attr.id]
+                      return (
+                        <td key={attr.id} className="px-4 py-3 max-w-[120px]">
+                          {attr.type === 'boolean' ? (
+                            val
+                              ? <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Yes</span>
+                              : <span className="text-xs text-zinc-400">No</span>
+                          ) : (val as string)
+                            ? <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate block">{val as string}</span>
+                            : <span className="text-xs text-zinc-400 dark:text-zinc-600">—</span>
+                          }
+                        </td>
+                      )
+                    })}
                     <td className="px-4 py-3">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
@@ -809,7 +856,7 @@ export default function TestCaseGrid({
                   // Expandable attribute detail row
                   ...(isExpanded && hasAttrs ? [
                     <tr key={`${tc.id}-attrs`} className="bg-zinc-50/60 dark:bg-zinc-900/60 border-b border-zinc-200/40 dark:border-zinc-800/40">
-                      <td colSpan={COLUMNS.length + 4} className="px-6 py-4">
+                      <td colSpan={COLUMNS.length + 4 + dynamicColCount} className="px-6 py-4">
                         <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">
                           Custom Attributes — {suite?.name}
                         </p>
@@ -835,7 +882,7 @@ export default function TestCaseGrid({
                   // Expandable children sub-row
                   ...(isChildrenExpanded && tc.isParent ? [
                     <tr key={`${tc.id}-children`} className="bg-violet-50/40 dark:bg-violet-900/10 border-b border-violet-200/40 dark:border-violet-800/30">
-                      <td colSpan={COLUMNS.length + 4} className="px-6 py-3">
+                      <td colSpan={COLUMNS.length + 4 + dynamicColCount} className="px-6 py-3">
                         <p className="text-xs font-medium text-violet-600 dark:text-violet-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
                           <GitBranch className="w-3 h-3" />Children ({tcChildren.length})
                         </p>

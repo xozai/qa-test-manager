@@ -41,7 +41,7 @@ export default function Dashboard({ testCases, testSuites, users, defects = [], 
   const total = testCases.length
   const visibleSuites = testSuites.filter(s => !s.isHidden)
 
-  const ran = testCases.filter(tc => tc.qaStatus !== 'Not Run')
+  const ran = testCases.filter(tc => tc.qaStatus !== 'Not Run' && tc.qaStatus !== 'Untested')
   const passed = testCases.filter(tc => tc.qaStatus === 'Pass')
   const passRate = ran.length > 0 ? Math.round((passed.length / ran.length) * 100) : 0
 

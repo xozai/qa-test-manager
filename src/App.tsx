@@ -264,6 +264,10 @@ function AppContent({ session }: { session: Session }) {
                 for (const tc of cases) await store.addTestCase({ ...tc, testSuiteId: suiteId })
                 toast(`Imported ${cases.length} AI-generated cases`, 'success')
               }}
+              onImportToSuite={async (suiteId, cases) => {
+                await store.addTestCasesToSuite(suiteId, cases)
+                toast(`Added ${cases.length} AI-generated case${cases.length !== 1 ? 's' : ''} to suite`, 'success')
+              }}
               onNavigate={(view) => setCurrentView(view)}
             />
           )}

@@ -165,6 +165,20 @@ export default function TestSuiteModal({ isOpen, onClose, onSave, testSuite, use
                       placeholder="opt1, opt2, opt3"
                       className="flex-1 bg-white dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 rounded-md px-2.5 py-1.5 text-xs text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 focus:border-transparent transition-colors" />
                   )}
+                  {/* Inheritable toggle */}
+                  <label className="flex items-center gap-1.5 flex-shrink-0 cursor-pointer select-none" title="Allow child test cases to inherit this attribute">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        checked={attr.inheritable !== false}
+                        onChange={e => updateAttr(i, { inheritable: e.target.checked })}
+                        className="sr-only"
+                      />
+                      <div className={`w-7 h-4 rounded-full transition-colors ${attr.inheritable !== false ? 'bg-indigo-600' : 'bg-zinc-300 dark:bg-zinc-600'}`} />
+                      <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${attr.inheritable !== false ? 'translate-x-3' : 'translate-x-0'}`} />
+                    </div>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">Inheritable</span>
+                  </label>
                   <button type="button" onClick={() => removeAttr(i)}
                     className="p-1.5 text-zinc-400 dark:text-zinc-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors flex-shrink-0">
                     <Trash2 className="w-3.5 h-3.5" />

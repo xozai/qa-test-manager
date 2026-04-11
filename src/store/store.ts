@@ -342,7 +342,13 @@ export function useTestStore() {
 
   // ── Users ─────────────────────────────────────────────────────────────────
   const addUser = useCallback(async (user: Omit<User, 'id'>) => {
-    await supabase.from('users').insert({ name: user.name, email: user.email, roles: user.roles })
+    const { data, error } = await supabase
+      .from('users')
+      .insert({ name: user.name, email: user.email, roles: user.roles })
+      .select()
+      .single()
+    if (error) throw error
+    if (data) setUsers(prev => [...prev, toUser(data as DbUser)])
   }, [])
 
   const updateUser = useCallback(async (id: string, data: Partial<Omit<User, 'id'>>) => {
@@ -350,11 +356,15 @@ export function useTestStore() {
     if (data.name  !== undefined) patch.name  = data.name
     if (data.email !== undefined) patch.email = data.email
     if (data.roles !== undefined) patch.roles = data.roles
-    await supabase.from('users').update(patch).eq('id', id)
+    const { error } = await supabase.from('users').update(patch).eq('id', id)
+    if (error) throw error
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, ...data } : u))
   }, [])
 
   const deleteUser = useCallback(async (id: string) => {
-    await supabase.from('users').delete().eq('id', id)
+    const { error } = await supabase.from('users').delete().eq('id', id)
+    if (error) throw error
+    setUsers(prev => prev.filter(u => u.id !== id))
   }, [])
 
   // ── Test Suites ───────────────────────────────────────────────────────────

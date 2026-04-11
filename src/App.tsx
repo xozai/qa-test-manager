@@ -94,11 +94,14 @@ function AppContent({ session }: { session: Session }) {
     } catch { toast('Failed to save suite', 'error') }
   }
 
-  function handleSaveUser(user: { id: string; name: string; email: string; roles: UserRole[] }) {
-    if (store.users.some(u => u.id === user.id))
-      void store.updateUser(user.id, { name: user.name, email: user.email, roles: user.roles })
-    else
-      void store.addUser({ name: user.name, email: user.email, roles: user.roles })
+  async function handleSaveUser(user: { id: string; name: string; email: string; roles: UserRole[] }) {
+    try {
+      if (store.users.some(u => u.id === user.id))
+        await store.updateUser(user.id, { name: user.name, email: user.email, roles: user.roles })
+      else
+        await store.addUser({ name: user.name, email: user.email, roles: user.roles })
+      toast('Member saved', 'success')
+    } catch { toast('Failed to save member', 'error') }
   }
 
   async function handleInviteUser(email: string, name: string, roles: UserRole[]) {

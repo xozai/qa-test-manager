@@ -3,7 +3,7 @@ import {
   Play, ChevronLeft, ChevronRight, CheckCircle2, XCircle,
   Download, Eye, ChevronUp, ChevronDown, ChevronsUpDown,
   FolderOpen, User as UserIcon, BookmarkPlus, BookOpen, Trash2, Paperclip, X,
-  Bug, Flag, Loader2, RotateCcw,
+  Bug, Flag, Loader2, RotateCcw, Search,
 } from 'lucide-react'
 import Papa from 'papaparse'
 import type { TestCase, TestSuite, User, TesterRole, TestStatus, AttributeDef, TestRun, Defect, RunAttachment } from '../../types'
@@ -150,6 +150,11 @@ function SuiteCard({ suite, caseCount, selected, onToggle }: {
             <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{suite.description}</p>
           )}
           <div className="flex items-center gap-3 mt-2">
+            {suite.suiteNumber && (
+              <span className="font-mono text-xs text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded">
+                TS-{suite.suiteNumber}
+              </span>
+            )}
             {suite.jiraNumber && (
               <span className="text-xs font-mono text-indigo-500 dark:text-indigo-400">{suite.jiraNumber}</span>
             )}
@@ -591,6 +596,7 @@ export default function TestRunner({
   rerunFrom, onRerunFromConsumed,
 }: TestRunnerProps) {
   const [step, setStep] = useState<Step>('suites')
+  const [suiteSearch, setSuiteSearch] = useState('')
   const [selectedSuiteIds, setSelectedSuiteIds] = useState<string[]>([])
   const [executorId, setExecutorId] = useState<string>(users[0]?.id ?? '')
   const [testerRole, setTesterRole] = useState<TesterRole>('QA')
@@ -655,6 +661,16 @@ export default function TestRunner({
   }
 
   const visibleSuites = useMemo(() => testSuites.filter(s => !s.isHidden), [testSuites])
+
+  const filteredSuites = useMemo(() => {
+    const q = suiteSearch.toLowerCase()
+    if (!q) return visibleSuites
+    return visibleSuites.filter(s =>
+      `ts-${s.suiteNumber}`.includes(q) ||
+      s.name.toLowerCase().includes(q) ||
+      s.jiraNumber.toLowerCase().includes(q)
+    )
+  }, [visibleSuites, suiteSearch])
 
   const suiteMap = useMemo(
     () => Object.fromEntries(testSuites.map(s => [s.id, s])),
@@ -864,17 +880,68 @@ export default function TestRunner({
               <p className="text-sm text-zinc-400 dark:text-zinc-600 mt-1">Create suites in the Test Suites view</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {visibleSuites.map(suite => (
-                <SuiteCard
-                  key={suite.id}
-                  suite={suite}
-                  caseCount={testCases.filter(tc => tc.testSuiteId === suite.id).length}
-                  selected={selectedSuiteIds.includes(suite.id)}
-                  onToggle={() => toggleSuite(suite.id)}
+            <>
+              {/* Search bar */}
+              <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Search suites by ID, name, or Jira number…"
+                  value={suiteSearch}
+                  onChange={e => setSuiteSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
                 />
-              ))}
-            </div>
+                {suiteSearch && (
+                  <button onClick={() => setSuiteSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Select all / clear row */}
+              {filteredSuites.length > 0 && (
+                <div className="flex items-center gap-3 text-xs text-zinc-500">
+                  <span>{selectedSuiteIds.length > 0 ? `${selectedSuiteIds.length} suite${selectedSuiteIds.length !== 1 ? 's' : ''} selected` : 'None selected'}</span>
+                  <span>·</span>
+                  <button
+                    onClick={() => setSelectedSuiteIds(prev => [...new Set([...prev, ...filteredSuites.map(s => s.id)])])}
+                    className="text-indigo-500 hover:text-indigo-400 transition-colors"
+                  >
+                    Select all filtered
+                  </button>
+                  {selectedSuiteIds.length > 0 && (
+                    <>
+                      <span>·</span>
+                      <button
+                        onClick={() => setSelectedSuiteIds([])}
+                        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+                      >
+                        Clear
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {filteredSuites.length === 0 && suiteSearch ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center">
+                  <p className="text-zinc-500 dark:text-zinc-400 text-sm">No suites match &ldquo;{suiteSearch}&rdquo;</p>
+                  <button onClick={() => setSuiteSearch('')} className="mt-2 text-xs text-indigo-500 hover:text-indigo-400">Clear search</button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filteredSuites.map(suite => (
+                    <SuiteCard
+                      key={suite.id}
+                      suite={suite}
+                      caseCount={testCases.filter(tc => tc.testSuiteId === suite.id).length}
+                      selected={selectedSuiteIds.includes(suite.id)}
+                      onToggle={() => toggleSuite(suite.id)}
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           <div className="flex items-center justify-between pt-2">

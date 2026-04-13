@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef } from 'react'
-import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download, GitBranch, CornerDownRight, CheckSquare, Bookmark, BookmarkCheck } from 'lucide-react'
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
+import { Plus, Search, Copy, Pencil, Trash2, ChevronUp, ChevronDown, ChevronRight, ChevronsUpDown, X, Upload, Download, GitBranch, CornerDownRight, CheckSquare, Bookmark, BookmarkCheck, Layers, Check } from 'lucide-react'
 import type { TestCase, TestSuite, User, SortConfig, Priority, TestStatus } from '../../types'
 import Badge from '../common/Badge'
 import ConfirmDialog from '../common/ConfirmDialog'
@@ -145,8 +145,6 @@ export default function TestCaseGrid({
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [showAllPills, setShowAllPills] = useState(false)
-
   // Bulk selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkDeleteConfirm, setBulkDeleteConfirm] = useState(false)
@@ -175,14 +173,32 @@ export default function TestCaseGrid({
     { key: '/', description: 'Focus search', handler: () => { searchRef.current?.focus(); searchRef.current?.select() } },
   ])
 
-  const PILL_LIMIT = 7
   const visibleSuitesList = testSuites.filter(s => !s.isHidden)
-  const pillSuites = showAllPills ? visibleSuitesList : visibleSuitesList.slice(0, PILL_LIMIT)
-  const overflowCount = visibleSuitesList.length - PILL_LIMIT
+  const [suiteDropdownOpen, setSuiteDropdownOpen] = useState(false)
+  const [suiteDropdownSearch, setSuiteDropdownSearch] = useState('')
+  const suiteDropdownRef = useRef<HTMLDivElement>(null)
 
-  function handlePillClick(suiteId: string) {
-    setFilters(prev => ({ ...prev, testSuiteId: prev.testSuiteId === suiteId ? '' : suiteId }))
-  }
+  useEffect(() => {
+    if (!suiteDropdownOpen) return
+    function handleClick(e: MouseEvent) {
+      if (suiteDropdownRef.current && !suiteDropdownRef.current.contains(e.target as Node)) {
+        setSuiteDropdownOpen(false)
+        setSuiteDropdownSearch('')
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [suiteDropdownOpen])
+
+  const filteredDropdownSuites = useMemo(() => {
+    const q = suiteDropdownSearch.toLowerCase()
+    if (!q) return visibleSuitesList
+    return visibleSuitesList.filter(s =>
+      `ts-${s.suiteNumber}`.includes(q) ||
+      s.name.toLowerCase().includes(q) ||
+      s.jiraNumber.toLowerCase().includes(q)
+    )
+  }, [visibleSuitesList, suiteDropdownSearch])
 
   const suiteMap = useMemo(
     () => Object.fromEntries(testSuites.map(s => [s.id, s.name])),
@@ -578,62 +594,88 @@ export default function TestCaseGrid({
         )}
       </div>
 
-      {/* Suite quick-filter pills */}
+      {/* Suite filter dropdown */}
       {visibleSuitesList.length > 0 && (
-        <div className="flex-shrink-0 px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 flex flex-wrap items-center gap-1.5">
-          <button
-            onClick={() => setFilters(prev => ({ ...prev, testSuiteId: '' }))}
-            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              !filters.testSuiteId
-                ? 'bg-indigo-600 text-white'
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-            }`}
-          >
-            All
-            <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
-              !filters.testSuiteId ? 'bg-indigo-500 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400'
-            }`}>
-              {testCases.length}
-            </span>
-          </button>
-
-          {pillSuites.map(suite => {
-            const count = testCases.filter(tc => tc.testSuiteId === suite.id).length
-            const isActive = filters.testSuiteId === suite.id
-            return (
-              <button
-                key={suite.id}
-                onClick={() => handlePillClick(suite.id)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                  isActive
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
-                }`}
-              >
-                <span className="max-w-[120px] truncate">{suite.name}</span>
-                <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold flex-shrink-0 ${
-                  isActive ? 'bg-indigo-500 text-white' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400'
-                }`}>
-                  {count}
-                </span>
-              </button>
-            )
-          })}
-
-          {!showAllPills && overflowCount > 0 && (
+        <div className="flex-shrink-0 px-6 py-2 border-b border-zinc-200 dark:border-zinc-800 flex items-center gap-2">
+          <div className="relative" ref={suiteDropdownRef}>
             <button
-              onClick={() => setShowAllPills(true)}
-              className="px-3 py-1 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+              onClick={() => { setSuiteDropdownOpen(v => !v); setSuiteDropdownSearch('') }}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                filters.testSuiteId
+                  ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-200 dark:border-indigo-500/30'
+                  : 'bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-700'
+              }`}
             >
-              +{overflowCount} more
+              <Layers className="w-3.5 h-3.5 flex-shrink-0" />
+              <span className="max-w-[180px] truncate">
+                {filters.testSuiteId ? (testSuites.find(s => s.id === filters.testSuiteId)?.name ?? 'Suite') : 'All Suites'}
+              </span>
+              <ChevronDown className="w-3 h-3 flex-shrink-0" />
             </button>
-          )}
-          {showAllPills && overflowCount > 0 && (
+
+            {suiteDropdownOpen && (
+              <div className="absolute left-0 top-full mt-1 z-20 w-72 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-lg overflow-hidden">
+                <div className="p-2 border-b border-zinc-100 dark:border-zinc-800">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 pointer-events-none" />
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="Search suites…"
+                      value={suiteDropdownSearch}
+                      onChange={e => setSuiteDropdownSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+                <div className="overflow-y-auto" style={{ maxHeight: 300 }}>
+                  <button
+                    onClick={() => { setFilters(prev => ({ ...prev, testSuiteId: '' })); setSuiteDropdownOpen(false) }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors ${
+                      !filters.testSuiteId
+                        ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                        : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    <span className="flex-1 font-medium">All Suites</span>
+                    <span className="text-[10px] text-zinc-400">{testCases.length}</span>
+                    {!filters.testSuiteId && <Check className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />}
+                  </button>
+                  {filteredDropdownSuites.map(suite => {
+                    const count = testCases.filter(tc => tc.testSuiteId === suite.id).length
+                    const isActive = filters.testSuiteId === suite.id
+                    return (
+                      <button
+                        key={suite.id}
+                        onClick={() => { setFilters(prev => ({ ...prev, testSuiteId: isActive ? '' : suite.id })); setSuiteDropdownOpen(false); setSuiteDropdownSearch('') }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors ${
+                          isActive
+                            ? 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+                            : 'text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                        }`}
+                      >
+                        <span className="font-mono text-[10px] text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-500/10 px-1 py-0.5 rounded flex-shrink-0">
+                          TS-{suite.suiteNumber}
+                        </span>
+                        <span className="flex-1 truncate">{suite.name}</span>
+                        <span className="text-[10px] text-zinc-400 flex-shrink-0">{count}</span>
+                        {isActive && <Check className="w-3.5 h-3.5 text-indigo-500 flex-shrink-0" />}
+                      </button>
+                    )
+                  })}
+                  {filteredDropdownSuites.length === 0 && (
+                    <p className="px-3 py-4 text-xs text-zinc-400 text-center">No suites match</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          {filters.testSuiteId && (
             <button
-              onClick={() => setShowAllPills(false)}
-              className="px-3 py-1 rounded-full text-xs font-medium text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+              onClick={() => setFilters(prev => ({ ...prev, testSuiteId: '' }))}
+              className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
             >
-              Show less
+              Clear
             </button>
           )}
         </div>

@@ -100,11 +100,22 @@ export default function TestSuiteModal({ isOpen, onClose, onSave, testSuite, use
       }
     >
       <div className="space-y-5">
-        <div>
-          <label className={labelCls}>Name <span className="text-red-400">*</span></label>
-          <input value={name} onChange={e => setName(e.target.value)}
-            placeholder="e.g. Authentication & Login" className={fieldCls(errors.name)} />
-          {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
+        <div className="grid grid-cols-[120px_1fr] gap-4">
+          <div>
+            <label className={labelCls}>Suite ID</label>
+            <input
+              readOnly
+              value={isEdit && testSuite?.suiteNumber ? `TS-${testSuite.suiteNumber}` : ''}
+              placeholder="Auto-assigned on save"
+              className="w-full bg-violet-50 dark:bg-violet-900/20 border border-violet-300 dark:border-violet-700 rounded-lg px-3 py-2 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 cursor-not-allowed opacity-75 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className={labelCls}>Name <span className="text-red-400">*</span></label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              placeholder="e.g. Authentication & Login" className={fieldCls(errors.name)} />
+            {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
+          </div>
         </div>
 
         <div>

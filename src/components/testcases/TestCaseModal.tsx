@@ -25,13 +25,6 @@ function genId() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
 }
 
-function suggestCaseId(existingIds: string[]): string {
-  const nums = existingIds
-    .map(id => { const m = id.match(/^TC-?(\d+)$/i); return m ? parseInt(m[1], 10) : null })
-    .filter((n): n is number => n !== null)
-  const next = nums.length > 0 ? Math.max(...nums) + 1 : 1
-  return `TC-${String(next).padStart(3, '0')}`
-}
 
 const PRIORITIES: Priority[] = ['High', 'Med', 'Low']
 const STATUSES: TestStatus[] = ['Not Run', 'Pass', 'Fail', 'Blocked', 'Skipped']
@@ -117,7 +110,7 @@ export default function TestCaseModal({
   isOpen, onClose, onSave,
   onLinkChild, onUpdateInheritance, onUnlinkChild,
   onFetchComments, onAddComment,
-  testCase, testSuites, allTestCases, existingIds, users = [],
+  testCase, testSuites, allTestCases, users = [],
 }: TestCaseModalProps) {
   const isEdit = !!testCase
   const edgeCases = useEdgeCaseSuggestions()
@@ -187,7 +180,7 @@ export default function TestCaseModal({
       setSteps(testCase.steps.length > 0 ? testCase.steps : [{ ...EMPTY_STEP }])
       setAttributeValues(testCase.attributeValues ?? {})
     } else {
-      setTestCaseId(suggestCaseId(existingIds))
+      setTestCaseId('')
       setTitle('')
       setDescription('')
       setPreconditions('')
@@ -205,13 +198,8 @@ export default function TestCaseModal({
 
   function validate() {
     const e: Record<string, string> = {}
-    if (!testCaseId.trim()) e.testCaseId = 'Required'
     if (!title.trim()) e.title = 'Required'
     if (!testSuiteId) e.testSuiteId = 'Required'
-    const hasDup = !isEdit
-      ? existingIds.includes(testCaseId.trim())
-      : existingIds.filter(id => id !== testCase?.testCaseId).includes(testCaseId.trim())
-    if (hasDup) e.testCaseId = 'ID already exists'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -378,9 +366,14 @@ export default function TestCaseModal({
           <div className="space-y-5">
             <div className="grid grid-cols-[140px_1fr] gap-4">
               <div>
-                <label className={labelCls}>Case ID <span className="text-red-400">*</span></label>
-                <input value={testCaseId} onChange={e => setTestCaseId(e.target.value)} placeholder="TC-001" className={fieldCls(errors.testCaseId)} />
-                {errors.testCaseId && <p className="text-xs text-red-400 mt-1">{errors.testCaseId}</p>}
+                <label className={labelCls}>Case ID</label>
+                <input
+                  value={testCaseId}
+                  readOnly
+                  placeholder={isEdit ? '' : 'Auto-assigned on save'}
+                  className={fieldCls(undefined, true)}
+                  title="ID is automatically assigned based on suite and position"
+                />
               </div>
               <div>
                 <label className={labelCls}>Title <span className="text-red-400">*</span></label>

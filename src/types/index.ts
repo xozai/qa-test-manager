@@ -34,6 +34,7 @@ export interface TestSuite {
   jiraNumber: string
   isHidden: boolean
   attributes: AttributeDef[]
+  suiteNumber?: number
   createdAt?: string
 }
 

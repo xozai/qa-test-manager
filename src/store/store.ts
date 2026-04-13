@@ -25,6 +25,7 @@ interface DbTestSuite {
   jira_number: string
   is_hidden: boolean
   attributes: AttributeDef[]
+  suite_number: number
   created_at: string
 }
 
@@ -132,6 +133,7 @@ function toTestSuite(row: DbTestSuite): TestSuite {
     jiraNumber: row.jira_number,
     isHidden: row.is_hidden,
     attributes: row.attributes ?? [],
+    suiteNumber: row.suite_number,
     createdAt: row.created_at,
   }
 }
@@ -245,6 +247,23 @@ function fromTestCase(tc: Omit<TestCase, 'id'>): Omit<DbTestCase, 'id' | 'create
     attribute_values: tc.attributeValues ?? {},
     parent_id: tc.parentId ?? null,
   }
+}
+
+// ── ID Generation ─────────────────────────────────────────────────────────────
+
+function generateTestCaseId(
+  suiteNumber: number,
+  existingCasesInSuite: TestCase[],
+  parentId?: string | null,
+): string {
+  if (parentId) {
+    const parent = existingCasesInSuite.find(tc => tc.id === parentId)
+    const parentTcId = parent?.testCaseId ?? `TS-${suiteNumber}-1`
+    const siblings = existingCasesInSuite.filter(tc => tc.parentId === parentId)
+    return `${parentTcId}-${siblings.length + 1}`
+  }
+  const standalones = existingCasesInSuite.filter(tc => !tc.parentId)
+  return `TS-${suiteNumber}-${standalones.length + 1}`
 }
 
 // ── Store Hook ────────────────────────────────────────────────────────────────
@@ -406,6 +425,7 @@ export function useTestStore() {
 
   // ── Test Suites ───────────────────────────────────────────────────────────
   const addTestSuite = useCallback(async (suite: Omit<TestSuite, 'id'>): Promise<string | null> => {
+    const nextSuiteNumber = Math.max(0, ...testSuites.map(s => s.suiteNumber ?? 0)) + 1
     const { data } = await supabase.from('test_suites').insert({
       name: suite.name,
       description: suite.description,
@@ -413,9 +433,10 @@ export function useTestStore() {
       jira_number: suite.jiraNumber,
       is_hidden: suite.isHidden,
       attributes: suite.attributes ?? [],
+      suite_number: nextSuiteNumber,
     }).select('id').single()
     return data?.id ?? null
-  }, [])
+  }, [testSuites])
 
   const updateTestSuite = useCallback(async (id: string, data: Partial<Omit<TestSuite, 'id'>>) => {
     const patch: Partial<Omit<DbTestSuite, 'id' | 'created_at'>> = {}
@@ -435,9 +456,16 @@ export function useTestStore() {
 
   // ── Test Cases ────────────────────────────────────────────────────────────
   const addTestCase = useCallback(async (tc: Omit<TestCase, 'id'>) => {
-    const { data } = await supabase.from('test_cases').insert(fromTestCase(tc)).select('id').single()
+    const suite = testSuites.find(s => s.id === tc.testSuiteId)
+    const suiteNumber = suite?.suiteNumber ?? 1
+    const casesInSuite = testCases.filter(t => t.testSuiteId === tc.testSuiteId)
+    const generatedId = generateTestCaseId(suiteNumber, casesInSuite, tc.parentId)
+    const { data } = await supabase
+      .from('test_cases')
+      .insert({ ...fromTestCase(tc), test_case_id: generatedId })
+      .select('id').single()
     if (data?.id) void logActivity(data.id, 'created', { title: tc.title })
-  }, [])
+  }, [testSuites, testCases])
 
   const updateTestCase = useCallback(async (id: string, data: Partial<Omit<TestCase, 'id'>>) => {
     const patch: Partial<Omit<DbTestCase, 'id' | 'created_at' | 'updated_at'>> = {}
@@ -634,20 +662,22 @@ export function useTestStore() {
   const copyTestCase = useCallback(async (sourceId: string, targetSuiteId?: string) => {
     const source = testCases.find(t => t.id === sourceId)
     if (!source) return
-    const maxNum = Math.max(0, ...testCases.map(t => {
-      const m = t.testCaseId.match(/TC-(\d+)/)
-      return m ? parseInt(m[1], 10) : 0
-    }))
+    const destSuiteId = targetSuiteId ?? source.testSuiteId
+    const suite = testSuites.find(s => s.id === destSuiteId)
+    const suiteNumber = suite?.suiteNumber ?? 1
+    const casesInSuite = testCases.filter(t => t.testSuiteId === destSuiteId)
+    const generatedId = generateTestCaseId(suiteNumber, casesInSuite, null)
     await supabase.from('test_cases').insert({
       ...fromTestCase(source),
-      test_case_id: `TC-${String(maxNum + 1).padStart(3, '0')}`,
+      test_case_id: generatedId,
       title: `${source.title} (Copy)`,
       qa_status: 'Not Run',
       uat_status: 'Not Run',
       bat_status: 'Not Run',
-      test_suite_id: targetSuiteId ?? source.testSuiteId ?? null,
+      parent_id: null,
+      test_suite_id: destSuiteId ?? null,
     })
-  }, [testCases])
+  }, [testCases, testSuites])
 
   // ── Activity Log helper ───────────────────────────────────────────────────
   async function logActivity(testCaseId: string, action: ActivityAction, metadata: Record<string, unknown> = {}) {

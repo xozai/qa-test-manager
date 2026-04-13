@@ -280,4 +280,6 @@ src/
 
 ## License
 
-MIT
+[GNU Affero General Public License v3.0 (AGPL-3.0)](./LICENSE) © 2026 xozai
+
+You are free to use, self-host, and fork this project. Any modified version run as a network service (e.g. a hosted SaaS) must also release its source code under the same license.

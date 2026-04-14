@@ -434,7 +434,15 @@ export function useTestStore() {
       is_hidden: suite.isHidden,
       attributes: suite.attributes ?? [],
       suite_number: nextSuiteNumber,
-    }).select('id').single()
+    }).select('id, created_at').single()
+    if (data?.id) {
+      setTestSuites(prev => [...prev, {
+        ...suite,
+        id: data.id,
+        suiteNumber: nextSuiteNumber,
+        createdAt: data.created_at ?? new Date().toISOString(),
+      }])
+    }
     return data?.id ?? null
   }, [testSuites])
 
@@ -447,11 +455,14 @@ export function useTestStore() {
     if (data.isHidden    !== undefined) patch.is_hidden   = data.isHidden
     if (data.attributes  !== undefined) patch.attributes  = data.attributes
     await supabase.from('test_suites').update(patch).eq('id', id)
+    setTestSuites(prev => prev.map(s => s.id === id ? { ...s, ...data } : s))
   }, [])
 
   const deleteTestSuite = useCallback(async (id: string) => {
     // test_cases under this suite are cascade-deleted by the DB foreign key
     await supabase.from('test_suites').delete().eq('id', id)
+    setTestSuites(prev => prev.filter(s => s.id !== id))
+    setTestCases(prev => prev.filter(tc => tc.testSuiteId !== id))
   }, [])
 
   // ── Test Cases ────────────────────────────────────────────────────────────
@@ -464,7 +475,17 @@ export function useTestStore() {
       .from('test_cases')
       .insert({ ...fromTestCase(tc), test_case_id: generatedId })
       .select('id').single()
-    if (data?.id) void logActivity(data.id, 'created', { title: tc.title })
+    if (data?.id) {
+      void logActivity(data.id, 'created', { title: tc.title })
+      setTestCases(prev => [...prev, {
+        ...tc,
+        id: data.id,
+        testCaseId: generatedId,
+        parentId: tc.parentId ?? null,
+        inheritanceConfig: null,
+        isParent: false,
+      }])
+    }
   }, [testSuites, testCases])
 
   const updateTestCase = useCallback(async (id: string, data: Partial<Omit<TestCase, 'id'>>) => {
@@ -482,6 +503,7 @@ export function useTestStore() {
     if (data.testSuiteId     !== undefined) patch.test_suite_id    = data.testSuiteId || null
     if (data.attributeValues !== undefined) patch.attribute_values = data.attributeValues
     await supabase.from('test_cases').update(patch).eq('id', id)
+    setTestCases(prev => prev.map(tc => tc.id === id ? { ...tc, ...data } : tc))
     const changedFields = Object.keys(data)
     if (changedFields.length > 0) void logActivity(id, 'edited', { fields: changedFields })
 
@@ -534,6 +556,9 @@ export function useTestStore() {
   const deleteTestCase = useCallback(async (id: string) => {
     // Children: nullify their parent_id (cascade via ON DELETE SET NULL on DB)
     await supabase.from('test_cases').delete().eq('id', id)
+    setTestCases(prev => prev.filter(tc => tc.id !== id).map(tc =>
+      tc.parentId === id ? { ...tc, parentId: null, inheritanceConfig: null, isParent: false } : tc
+    ))
   }, [])
 
   // ── Inheritance ───────────────────────────────────────────────────────────
@@ -642,6 +667,11 @@ export function useTestStore() {
   const bulkDeleteTestCases = useCallback(async (ids: string[]) => {
     if (ids.length === 0) return
     await supabase.from('test_cases').delete().in('id', ids)
+    setTestCases(prev => prev.filter(tc => !ids.includes(tc.id)).map(tc =>
+      tc.parentId && ids.includes(tc.parentId)
+        ? { ...tc, parentId: null, inheritanceConfig: null, isParent: false }
+        : tc
+    ))
   }, [])
 
   const bulkUpdateTestCases = useCallback(async (
@@ -655,6 +685,7 @@ export function useTestStore() {
     if (patch.batStatus   !== undefined) dbPatch.bat_status    = patch.batStatus
     if (patch.testSuiteId !== undefined) dbPatch.test_suite_id = patch.testSuiteId || null
     await supabase.from('test_cases').update(dbPatch).in('id', ids)
+    setTestCases(prev => prev.map(tc => ids.includes(tc.id) ? { ...tc, ...patch } : tc))
     const action: ActivityAction = patch.testSuiteId !== undefined ? 'moved' : 'status_changed'
     for (const id of ids) void logActivity(id, action, dbPatch)
   }, [])
@@ -667,7 +698,7 @@ export function useTestStore() {
     const suiteNumber = suite?.suiteNumber ?? 1
     const casesInSuite = testCases.filter(t => t.testSuiteId === destSuiteId)
     const generatedId = generateTestCaseId(suiteNumber, casesInSuite, null)
-    await supabase.from('test_cases').insert({
+    const { data } = await supabase.from('test_cases').insert({
       ...fromTestCase(source),
       test_case_id: generatedId,
       title: `${source.title} (Copy)`,
@@ -676,7 +707,22 @@ export function useTestStore() {
       bat_status: 'Not Run',
       parent_id: null,
       test_suite_id: destSuiteId ?? null,
-    })
+    }).select('id').single()
+    if (data?.id) {
+      setTestCases(prev => [...prev, {
+        ...source,
+        id: data.id,
+        testCaseId: generatedId,
+        title: `${source.title} (Copy)`,
+        qaStatus: 'Not Run',
+        uatStatus: 'Not Run',
+        batStatus: 'Not Run',
+        parentId: null,
+        testSuiteId: destSuiteId ?? source.testSuiteId,
+        inheritanceConfig: null,
+        isParent: false,
+      }])
+    }
   }, [testCases, testSuites])
 
   // ── Activity Log helper ───────────────────────────────────────────────────

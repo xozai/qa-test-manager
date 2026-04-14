@@ -230,7 +230,8 @@ export default function TestCaseGrid({
   }, [])
 
   const filtered = useMemo(() => {
-    let result = testCases
+    const hiddenSuiteIds = new Set(testSuites.filter(s => s.isHidden).map(s => s.id))
+    let result = testCases.filter(tc => !tc.testSuiteId || !hiddenSuiteIds.has(tc.testSuiteId))
 
     if (search.trim()) {
       const q = search.toLowerCase()
@@ -267,7 +268,7 @@ export default function TestCaseGrid({
       }
       return 0
     })
-  }, [testCases, search, filters, sorts])
+  }, [testCases, testSuites, search, filters, sorts])
 
   const activeFilterCount = Object.entries(filters).filter(([k, v]) => k === 'relationship' ? v !== 'all' : Boolean(v)).length
 

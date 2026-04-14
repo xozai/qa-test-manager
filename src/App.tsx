@@ -29,24 +29,25 @@ function AppContent({ session }: { session: Session }) {
   const { toast } = useToast()
 
   const [tcModalOpen, setTcModalOpen] = useState(false)
-  const [editingCase, setEditingCase] = useState<TestCase | null>(null)
+  const [editingCaseId, setEditingCaseId] = useState<string | null>(null)
+  const editingCase = editingCaseId ? (store.testCases.find(tc => tc.id === editingCaseId) ?? null) : null
   const [rerunFrom, setRerunFrom] = useState<TestRun | null>(null)
 
   const currentUser = store.users.find(u => u.email === session.user.email) ?? null
   const isBSA = currentUser?.roles.includes('BSA') ?? false
 
   // ── Handlers ────────────────────────────────────────────────────────────────
-  function handleAddCase() { setEditingCase(null); setTcModalOpen(true) }
-  function handleEditCase(tc: TestCase) { setEditingCase(tc); setTcModalOpen(true) }
+  function handleAddCase() { setEditingCaseId(null); setTcModalOpen(true) }
+  function handleEditCase(tc: TestCase) { setEditingCaseId(tc.id); setTcModalOpen(true) }
 
   async function handleSaveCase(tc: TestCase, _propagate: boolean) {
     try {
-      if (editingCase) await store.updateTestCase(editingCase.id, tc)
-      else             await store.addTestCase(tc)
-      toast(editingCase ? 'Test case updated' : 'Test case created', 'success')
+      if (editingCaseId) await store.updateTestCase(editingCaseId, tc)
+      else               await store.addTestCase(tc)
+      toast(editingCaseId ? 'Test case updated' : 'Test case created', 'success')
     } catch { toast('Failed to save test case', 'error') }
     setTcModalOpen(false)
-    setEditingCase(null)
+    setEditingCaseId(null)
   }
 
   async function handleDeleteCase(id: string) {
@@ -294,7 +295,7 @@ function AppContent({ session }: { session: Session }) {
 
       <TestCaseModal
         isOpen={tcModalOpen}
-        onClose={() => { setTcModalOpen(false); setEditingCase(null) }}
+        onClose={() => { setTcModalOpen(false); setEditingCaseId(null) }}
         onSave={handleSaveCase}
         onLinkChild={(childId, parentId, cfg) => void store.linkChildToParent(childId, parentId, cfg)}
         onUpdateInheritance={(childId, cfg, parentId) => void store.updateInheritance(childId, cfg, parentId)}

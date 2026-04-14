@@ -14,7 +14,7 @@ interface TestCaseGridProps {
   onAdd: () => void
   onEdit: (tc: TestCase) => void
   onDelete: (id: string) => void
-  onDuplicate: (tc: TestCase) => void
+  onDuplicate: (tc: TestCase) => void | Promise<void>
   onImportCSV: (cases: Omit<TestCase, 'id' | 'createdAt' | 'updatedAt'>[]) => Promise<void>
   onBulkDelete?: (ids: string[]) => void
   onBulkUpdateStatus?: (ids: string[], field: 'qaStatus' | 'uatStatus' | 'batStatus', status: TestStatus) => void

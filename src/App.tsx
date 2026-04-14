@@ -175,9 +175,11 @@ function AppContent({ session }: { session: Session }) {
               onAdd={handleAddCase}
               onEdit={handleEditCase}
               onDelete={handleDeleteCase}
-              onDuplicate={(tc) => {
-                void store.copyTestCase(tc.id)
-                toast('Test case duplicated', 'success')
+              onDuplicate={async (tc) => {
+                try {
+                  await store.copyTestCase(tc.id)
+                  toast('Test case duplicated', 'success')
+                } catch { toast('Failed to duplicate test case', 'error') }
               }}
               onImportCSV={handleImportCSV}
               onBulkDelete={handleBulkDelete}

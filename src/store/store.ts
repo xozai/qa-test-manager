@@ -698,7 +698,7 @@ export function useTestStore() {
     const suiteNumber = suite?.suiteNumber ?? 1
     const casesInSuite = testCases.filter(t => t.testSuiteId === destSuiteId)
     const generatedId = generateTestCaseId(suiteNumber, casesInSuite, null)
-    const { data } = await supabase.from('test_cases').insert({
+    const { data, error } = await supabase.from('test_cases').insert({
       ...fromTestCase(source),
       test_case_id: generatedId,
       title: `${source.title} (Copy)`,
@@ -708,6 +708,7 @@ export function useTestStore() {
       parent_id: null,
       test_suite_id: destSuiteId ?? null,
     }).select('id').single()
+    if (error) throw error
     if (data?.id) {
       setTestCases(prev => [...prev, {
         ...source,

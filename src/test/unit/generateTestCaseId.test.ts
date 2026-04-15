@@ -23,7 +23,7 @@ function makeCase(overrides: Partial<TestCase> & { testCaseId: string }): TestCa
     inheritanceConfig: null,
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
-    ...overrides,
+    ...rest,
   }
 }
 

@@ -33,6 +33,7 @@ interface ColumnDef {
 
 const COLUMNS: ColumnDef[] = [
   { key: 'testCaseId', label: 'ID', sortable: true, width: 'w-24' },
+  { key: 'parentId', label: 'Parent ID', sortable: false, width: 'w-28' },
   { key: 'title', label: 'Title', sortable: true },
   { key: 'testSuiteId', label: 'Suite', sortable: true, width: 'w-36' },
   { key: 'priority', label: 'Priority', sortable: true, width: 'w-24' },
@@ -809,7 +810,27 @@ export default function TestCaseGrid({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className="font-mono text-xs text-indigo-400">{tc.testCaseId}</span>
+                      <button
+                        onClick={() => onEdit(tc)}
+                        className="font-mono text-xs text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
+                        title="Open test case"
+                      >
+                        {tc.testCaseId}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      {tc.parentId ? (
+                        <button
+                          onClick={() => {
+                            const parent = testCases.find(t => t.id === tc.parentId)
+                            if (parent) onEdit(parent)
+                          }}
+                          className="font-mono text-xs text-violet-400 hover:text-violet-300 hover:underline transition-colors"
+                          title="Open parent case"
+                        >
+                          {testCases.find(t => t.id === tc.parentId)?.testCaseId ?? '—'}
+                        </button>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-xs">{tc.title}</p>

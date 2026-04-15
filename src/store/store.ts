@@ -260,10 +260,18 @@ function generateTestCaseId(
     const parent = existingCasesInSuite.find(tc => tc.id === parentId)
     const parentTcId = parent?.testCaseId ?? `TS-${suiteNumber}-1`
     const siblings = existingCasesInSuite.filter(tc => tc.parentId === parentId)
-    return `${parentTcId}-${siblings.length + 1}`
+    const maxSibSeq = siblings.reduce((m, tc) => {
+      const seg = Number(tc.testCaseId.split('-').pop())
+      return isNaN(seg) ? m : Math.max(m, seg)
+    }, 0)
+    return `${parentTcId}-${maxSibSeq + 1}`
   }
   const standalones = existingCasesInSuite.filter(tc => !tc.parentId)
-  return `TS-${suiteNumber}-${standalones.length + 1}`
+  const maxSeq = standalones.reduce((m, tc) => {
+    const seg = Number(tc.testCaseId.split('-').pop())
+    return isNaN(seg) ? m : Math.max(m, seg)
+  }, 0)
+  return `TS-${suiteNumber}-${maxSeq + 1}`
 }
 
 // ── Store Hook ────────────────────────────────────────────────────────────────
@@ -520,36 +528,54 @@ export function useTestStore() {
       .in('id', (inhRows as DbInheritance[]).map(r => r.child_id))
     if (!childRows) return
 
+    const childLocalPatches = new Map<string, Partial<TestCase>>()
+
     for (const inh of inhRows as DbInheritance[]) {
       const child = (childRows as DbTestCase[]).find(c => c.id === inh.child_id)
       if (!child) continue
       const childPatch: Partial<Omit<DbTestCase, 'id' | 'created_at' | 'updated_at'>> = {}
-      if (inh.inherit_preconditions && data.preconditions !== undefined)
+      const localPatch: Partial<TestCase> = {}
+
+      if (inh.inherit_preconditions && data.preconditions !== undefined) {
         childPatch.preconditions = data.preconditions
-      if (inh.inherit_test_data && data.testData !== undefined)
+        localPatch.preconditions = data.preconditions
+      }
+      if (inh.inherit_test_data && data.testData !== undefined) {
         childPatch.test_data = data.testData
-      if (inh.inherit_steps && data.steps !== undefined)
+        localPatch.testData = data.testData
+      }
+      if (inh.inherit_steps && data.steps !== undefined) {
         childPatch.steps = data.steps
+        localPatch.steps = data.steps
+      }
       if (data.attributeValues !== undefined) {
         if (inh.inherit_attributes) {
-          // Inherit ALL attributes
           const merged = { ...child.attribute_values }
           for (const key of Object.keys(data.attributeValues)) {
             if (key in merged) merged[key] = data.attributeValues[key]
           }
           childPatch.attribute_values = merged
+          localPatch.attributeValues = merged
         } else if (inh.inherited_attribute_ids?.length) {
-          // Inherit only specific attributes
           const merged = { ...child.attribute_values }
           for (const attrId of inh.inherited_attribute_ids) {
             if (attrId in data.attributeValues) merged[attrId] = data.attributeValues[attrId]
           }
           childPatch.attribute_values = merged
+          localPatch.attributeValues = merged
         }
       }
       if (Object.keys(childPatch).length > 0) {
         await supabase.from('test_cases').update(childPatch).eq('id', inh.child_id)
+        childLocalPatches.set(inh.child_id, localPatch)
       }
+    }
+
+    if (childLocalPatches.size > 0) {
+      setTestCases(prev => prev.map(tc => {
+        const patch = childLocalPatches.get(tc.id)
+        return patch ? { ...tc, ...patch } : tc
+      }))
     }
   }, [])
 
@@ -698,10 +724,20 @@ export function useTestStore() {
     const suiteNumber = suite?.suiteNumber ?? 1
     const casesInSuite = testCases.filter(t => t.testSuiteId === destSuiteId)
     const generatedId = generateTestCaseId(suiteNumber, casesInSuite, null)
+
+    const baseTitle = source.title.replace(/ \(Copy(?: \d+)?\)$/, '')
+    const existingTitles = new Set(testCases.map(tc => tc.title))
+    let copyTitle = `${baseTitle} (Copy)`
+    if (existingTitles.has(copyTitle)) {
+      let n = 2
+      while (existingTitles.has(`${baseTitle} (Copy ${n})`)) n++
+      copyTitle = `${baseTitle} (Copy ${n})`
+    }
+
     const { data, error } = await supabase.from('test_cases').insert({
       ...fromTestCase(source),
       test_case_id: generatedId,
-      title: `${source.title} (Copy)`,
+      title: copyTitle,
       qa_status: 'Not Run',
       uat_status: 'Not Run',
       bat_status: 'Not Run',
@@ -714,7 +750,7 @@ export function useTestStore() {
         ...source,
         id: data.id,
         testCaseId: generatedId,
-        title: `${source.title} (Copy)`,
+        title: copyTitle,
         qaStatus: 'Not Run',
         uatStatus: 'Not Run',
         batStatus: 'Not Run',

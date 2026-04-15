@@ -1197,6 +1197,7 @@ export default function TestRunner({
               <table className="w-full text-sm">
                 <thead className="border-b border-zinc-200 dark:border-zinc-800">
                   <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-zinc-500 uppercase tracking-wide">Actions</th>
                     {([
                       { key: 'testCaseId', label: 'ID' },
                       { key: 'title', label: 'Title' },
@@ -1216,7 +1217,6 @@ export default function TestRunner({
                         </span>
                       </th>
                     ))}
-                    <th className="px-4 py-3 text-right text-xs font-medium text-zinc-500 uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
@@ -1231,6 +1231,30 @@ export default function TestRunner({
                     const suite = suiteMap[tc.testSuiteId]
                     return (
                       <tr key={tc.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors group">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => { setExecutingCase(tc); setStep('execute') }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors"
+                            >
+                              <Play className="w-3.5 h-3.5" />Execute
+                            </button>
+                            <button
+                              onClick={() => { setViewingCase(tc); setStep('view') }}
+                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5" />View
+                            </button>
+                            {(status === 'Fail' || status === 'Blocked') && (
+                              <button
+                                onClick={() => setLogDefectCase(tc)}
+                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors"
+                              >
+                                <Bug className="w-3.5 h-3.5" />Log Defect
+                              </button>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-4 py-3">
                           <span className="font-mono text-xs text-indigo-500 dark:text-indigo-400 font-medium">{tc.testCaseId}</span>
                         </td>
@@ -1249,30 +1273,6 @@ export default function TestRunner({
                             </td>
                           )
                         })}
-                        <td className="px-4 py-3">
-                          <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {(status === 'Fail' || status === 'Blocked') && (
-                              <button
-                                onClick={() => setLogDefectCase(tc)}
-                                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors"
-                              >
-                                <Bug className="w-3.5 h-3.5" />Log Defect
-                              </button>
-                            )}
-                            <button
-                              onClick={() => { setViewingCase(tc); setStep('view') }}
-                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md transition-colors"
-                            >
-                              <Eye className="w-3.5 h-3.5" />View
-                            </button>
-                            <button
-                              onClick={() => { setExecutingCase(tc); setStep('execute') }}
-                              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-500 rounded-md transition-colors"
-                            >
-                              <Play className="w-3.5 h-3.5" />Execute
-                            </button>
-                          </div>
-                        </td>
                       </tr>
                     )
                   })}

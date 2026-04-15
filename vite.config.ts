@@ -10,4 +10,10 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
   },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**', '**/e2e/**'],
+  },
 })

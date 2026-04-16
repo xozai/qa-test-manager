@@ -417,19 +417,16 @@ export function useTestStore() {
       }
       if (data.attributeValues !== undefined) {
         if (inh.inherit_attributes) {
-          const merged = { ...child.attribute_values }
-          for (const key of Object.keys(data.attributeValues)) {
-            if (key in merged) merged[key] = data.attributeValues[key]
-          }
+          const merged = { ...child.attribute_values, ...data.attributeValues }
           childPatch.attribute_values = merged
-          localPatch.attributeValues = merged
+          localPatch.attributeValues  = merged
         } else if (inh.inherited_attribute_ids?.length) {
           const merged = { ...child.attribute_values }
           for (const attrId of inh.inherited_attribute_ids) {
             if (attrId in data.attributeValues) merged[attrId] = data.attributeValues[attrId]
           }
           childPatch.attribute_values = merged
-          localPatch.attributeValues = merged
+          localPatch.attributeValues  = merged
         }
       }
       if (Object.keys(childPatch).length > 0) {
@@ -474,35 +471,36 @@ export function useTestStore() {
     }, { onConflict: 'child_id' })
 
     // Immediately apply inherited fields from parent to child
-    const { data: parentRow } = await supabase
-      .from('test_cases').select('*').eq('id', parentId).single()
-    if (!parentRow) return
-    const parent = parentRow as DbTestCase
-    const { data: childRow } = await supabase
-      .from('test_cases').select('*').eq('id', childId).single()
-    if (!childRow) return
-    const child = childRow as DbTestCase
+    const [{ data: parentRow }, { data: childRow }] = await Promise.all([
+      supabase.from('test_cases').select('*').eq('id', parentId).single(),
+      supabase.from('test_cases').select('*').eq('id', childId).single(),
+    ])
 
-    const applyPatch: Partial<Omit<DbTestCase, 'id' | 'created_at' | 'updated_at'>> = {}
-    if (config.inheritPreconditions) applyPatch.preconditions = parent.preconditions
-    if (config.inheritTestData)      applyPatch.test_data     = parent.test_data
-    if (config.inheritSteps)         applyPatch.steps         = parent.steps
-    if (config.inheritAttributes) {
-      const merged = { ...child.attribute_values }
-      for (const key of Object.keys(parent.attribute_values)) {
-        if (key in merged) merged[key] = parent.attribute_values[key]
+    // Apply inherited fields if both rows are available; always reload regardless
+    if (parentRow && childRow) {
+      const parent = parentRow as DbTestCase
+      const child  = childRow  as DbTestCase
+
+      const applyPatch: Partial<Omit<DbTestCase, 'id' | 'created_at' | 'updated_at'>> = {}
+      if (config.inheritPreconditions) applyPatch.preconditions = parent.preconditions
+      if (config.inheritTestData)      applyPatch.test_data     = parent.test_data
+      if (config.inheritSteps)         applyPatch.steps         = parent.steps
+      if (config.inheritAttributes) {
+        // Spread parent values on top — works even when child attribute_values is empty {}
+        applyPatch.attribute_values = { ...child.attribute_values, ...parent.attribute_values }
+      } else if (config.inheritedAttributeIds?.length) {
+        const merged = { ...child.attribute_values }
+        for (const attrId of config.inheritedAttributeIds) {
+          if (attrId in parent.attribute_values) merged[attrId] = parent.attribute_values[attrId]
+        }
+        applyPatch.attribute_values = merged
       }
-      applyPatch.attribute_values = merged
-    } else if (config.inheritedAttributeIds?.length) {
-      const merged = { ...child.attribute_values }
-      for (const attrId of config.inheritedAttributeIds) {
-        if (attrId in parent.attribute_values) merged[attrId] = parent.attribute_values[attrId]
+      if (Object.keys(applyPatch).length > 0) {
+        await supabase.from('test_cases').update(applyPatch).eq('id', childId)
       }
-      applyPatch.attribute_values = merged
     }
-    if (Object.keys(applyPatch).length > 0) {
-      await supabase.from('test_cases').update(applyPatch).eq('id', childId)
-    }
+
+    // Always reload so parentId, isParent, and inheritanceConfig are reflected in local state
     await reloadCases()
   }, [])
 
@@ -533,11 +531,7 @@ export function useTestStore() {
     if (config.inheritTestData)      applyPatch.test_data     = parent.test_data
     if (config.inheritSteps)         applyPatch.steps         = parent.steps
     if (config.inheritAttributes) {
-      const merged = { ...child.attribute_values }
-      for (const key of Object.keys(parent.attribute_values)) {
-        if (key in merged) merged[key] = parent.attribute_values[key]
-      }
-      applyPatch.attribute_values = merged
+      applyPatch.attribute_values = { ...child.attribute_values, ...parent.attribute_values }
     } else if (config.inheritedAttributeIds?.length) {
       const merged = { ...child.attribute_values }
       for (const attrId of config.inheritedAttributeIds) {
